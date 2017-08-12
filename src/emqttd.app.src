@@ -1,0 +1,11 @@
+{application,emqttd,
+             [{description,"MQTT Broker"},
+              {vsn,"2.1.2"},
+              {modules,[]},
+              {registered,[emqttd_sup]},
+              {applications,[kernel,stdlib,asn1,public_key,ssl,gproc,lager,esockd,mochiweb,pbkdf2]},
+              {env,[]},
+              {mod,{emqttd_app,[]}},
+              {maintainers,["Maxim Sokhatsky <maxim@synrc.com>"]},
+              {licenses,["Apache-2.0"]},
+              {links,[{"Github","https://github.com/synrc/emqttd"}]}]}.
