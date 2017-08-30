@@ -42,20 +42,21 @@
 mnesia(boot) ->
     %% Trie Table
     ok = emqttd_mnesia:create_table(mqtt_trie, [
-                {ram_copies, [node()]},
+                {disc_copies, [node()]},
                 {record_name, trie},
                 {attributes, record_info(fields, trie)}]),
     %% Trie Node Table
     ok = emqttd_mnesia:create_table(mqtt_trie_node, [
-                {ram_copies, [node()]},
+                {disc_copies, [node()]},
                 {record_name, trie_node},
                 {attributes, record_info(fields, trie_node)}]);
 
 mnesia(copy) ->
     %% Copy Trie Table
-    ok = emqttd_mnesia:copy_table(mqtt_trie),
+%    ok = emqttd_mnesia:copy_table(mqtt_trie),
     %% Copy Trie Node Table
-    ok = emqttd_mnesia:copy_table(mqtt_trie_node).
+%    ok = emqttd_mnesia:copy_table(mqtt_trie_node),
+   ok.
 
 %%--------------------------------------------------------------------
 %% Trie API

@@ -55,18 +55,19 @@
 
 mnesia(boot) ->
     ok = emqttd_mnesia:create_table(mqtt_topic, [
-                {ram_copies, [node()]},
+                {disc_copies, [node()]},
                 {record_name, mqtt_topic},
                 {attributes, record_info(fields, mqtt_topic)}]),
     ok = emqttd_mnesia:create_table(mqtt_route, [
                 {type, bag},
-                {ram_copies, [node()]},
+                {disc_copies, [node()]},
                 {record_name, mqtt_route},
                 {attributes, record_info(fields, mqtt_route)}]);
 
 mnesia(copy) ->
-    ok = emqttd_mnesia:copy_table(mqtt_topic, ram_copies),
-    ok = emqttd_mnesia:copy_table(mqtt_route, ram_copies).
+%    ok = emqttd_mnesia:copy_table(mqtt_topic, ram_copies),
+%    ok = emqttd_mnesia:copy_table(mqtt_route, ram_copies),
+    ok.
 
 %%--------------------------------------------------------------------
 %% Start the Router
