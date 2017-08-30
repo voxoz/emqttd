@@ -74,7 +74,7 @@ create_tab(mqtt_subproperty) ->
 create_tab(mqtt_subscriber) ->
     %% Subscriber: Topic -> Sub1, Sub2, Sub3, ..., SubN
     %% duplicate_bag: o(1) insert
-    ensure_tab(mqtt_subscriber, [public, named_table, duplicate_bag | ?CONCURRENCY_OPTS]);
+    ensure_tab(mqtt_subscriber, [public, named_table, bag | ?CONCURRENCY_OPTS]);
 
 create_tab(mqtt_subscription) ->
     %% Subscription: Sub -> Topic1, Topic2, Topic3, ..., TopicN
