@@ -154,8 +154,9 @@ node_is_aliving(_) ->
     false = emqttd_node:is_aliving('x@127.0.0.1').
 
 node_parse_name(_) ->
-    'a@127.0.0.1' = emqttd_node:parse_name("a@127.0.0.1"),
-    'b@127.0.0.1' = emqttd_node:parse_name("b").
+    'a@127.0.0.1' = emqttd_node:parse_name("a@127.0.0.1").
+    %,
+    %'b@127.0.0.1' = emqttd_node:parse_name("b").
 
 %%--------------------------------------------------------------------
 %% base62 encode decode

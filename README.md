@@ -11,6 +11,7 @@ Try
 
 ```shell
 $ git clone git://synrc.com/synrc/emqttd && cd emqttd
+$ rebar ct
 $ mad dep com pla rep
 ```
 

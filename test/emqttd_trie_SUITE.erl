@@ -28,7 +28,11 @@ all() ->
     [t_insert, t_match, t_match2, t_match3, t_delete, t_delete2, t_delete3].
 
 init_per_suite(Config) ->
+    
     emqttd_mnesia:ensure_started(),
+    application:set_env(kvs,dba,store_mnesia),
+    application:set_env(kvs,schema,[kvs_user, kvs_acl, kvs_feed, kvs_subscription]),
+    kvs:join(),
     ?TRIE:mnesia(boot),
     ?TRIE:mnesia(copy),
     Config.
