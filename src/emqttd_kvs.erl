@@ -1,6 +1,6 @@
 -module(emqttd_kvs).
 -include_lib("kvs/include/metainfo.hrl").
--include_lib("emqttd/include/emqttd.hrl").
+-include("emqttd.hrl").
 -compile(export_all).
 
 metainfo() ->   #schema{name=kvs,tables= tables() }.

@@ -126,8 +126,6 @@ init_per_suite(Config) ->
     Vals = change_opts(ssl_oneway, DataDir, proplists:get_value(emqttd, NewConfig)),
     [application:set_env(emqttd, Par, Value) || {Par, Value} <- Vals],
     application:ensure_all_started(emqttd),
-%    application:start(kvs),
-%    kvs:join(),
     [{config, NewConfig} | Config].
 
 end_per_suite(_Config) ->
