@@ -121,19 +121,20 @@ init_per_suite(Config) ->
     application:start(mnesia),
     application:start(gproc),
     application:start(emqttc),
-    application:start(kvs),
-    kvs:join(),
     DataDir = proplists:get_value(data_dir, Config),
     NewConfig = emqttd_config(DataDir),
     Vals = change_opts(ssl_oneway, DataDir, proplists:get_value(emqttd, NewConfig)),
     [application:set_env(emqttd, Par, Value) || {Par, Value} <- Vals],
     application:ensure_all_started(emqttd),
+%    application:start(kvs),
+%    kvs:join(),
     [{config, NewConfig} | Config].
 
 end_per_suite(_Config) ->
     application:stop(emqttd),
     application:stop(esockd),
     application:stop(gproc),
+    application:stop(mnesia),
     emqttd_mnesia:ensure_stopped().
 
 %%--------------------------------------------------------------------
@@ -644,11 +645,15 @@ conflict_listeners(_) ->
     end,
     spawn_link(F),
 
+    F2 = fun() ->
+    process_flag(trap_exit, true),
     {ok, C2} = emqttc:start_link([{host, "127.0.0.1"},
                                   {port, 1883},
                                   {client_id, <<"c1">>},
-                                  {clean_sess, false}]),
-    timer:sleep(10),
+                                  {clean_sess, false}])
+    end,
+    spawn_link(F2),
+    timer:sleep(50),
 
     Listeners =
     lists:map(fun({{Protocol, ListenOn}, Pid}) ->
@@ -660,7 +665,7 @@ conflict_listeners(_) ->
               end, esockd:listeners()),
     ?assertEqual(1, proplists:get_value(current_clients, proplists:get_value("mqtt:tcp:1883", Listeners))),
     ?assertEqual(true, lists:member({conflict,1}, proplists:get_value(shutdown_count, proplists:get_value("mqtt:tcp:1883", Listeners)))),
-    emqttc:disconnect(C2).
+    ok.
 
 cli_vm(_) ->
     emqttd_cli:vm([]),

@@ -11,8 +11,9 @@ Try
 
 ```shell
 $ git clone git://synrc.com/synrc/emqttd && cd emqttd
+$ mad dep com pla
 $ rebar ct
-$ mad dep com pla rep
+$ mad rep
 ```
 
 Credits
