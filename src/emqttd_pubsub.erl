@@ -120,7 +120,7 @@ dispatch({_Share, Subs}, Topic, Msg) ->
     dispatch(lists:nth(rand:uniform(length(Subs)), Subs), Topic, Msg).
 
 subscribers(Topic) ->
-    group_by_share(try ets:lookup_element(mqtt_subscriber, Topic, 2) catch error:badarg -> [] end).
+    group_by_share(try ets:lookup_element(mqtt_subscriber, Topic, 3) catch error:badarg -> [] end).
 
 group_by_share([]) -> [];
 
@@ -211,11 +211,13 @@ add_subscriber(Topic, Subscriber, Options) ->
 
 add_subscriber_(Share, Topic, Subscriber) ->
     (not ets:member(mqtt_subscriber, Topic)) andalso emqttd_router:add_route(Topic),
-    ets:insert(mqtt_subscriber, {Topic, shared(Share, Subscriber)}).
+    kvs:put({mqtt_subscriber, Topic, shared(Share, Subscriber)}).
+%    ets:insert(mqtt_subscriber, {Topic, shared(Share, Subscriber)}).
 
 add_local_subscriber_(Share, Topic, Subscriber) ->
     (not ets:member(mqtt_subscriber, {local, Topic})) andalso emqttd_router:add_local_route(Topic),
-    ets:insert(mqtt_subscriber, {{local, Topic}, shared(Share, Subscriber)}).
+    kvs:put({mqtt_subscriber, {local, Topic}, shared(Share, Subscriber)}).
+%    ets:insert(mqtt_subscriber, {{local, Topic}, shared(Share, Subscriber)}).
 
 del_subscriber(Topic, Subscriber, Options) ->
     Share = proplists:get_value(share, Options),
@@ -225,11 +227,13 @@ del_subscriber(Topic, Subscriber, Options) ->
     end.
 
 del_subscriber_(Share, Topic, Subscriber) ->
-    ets:delete_object(mqtt_subscriber, {Topic, shared(Share, Subscriber)}),
+    kvs:delete(mqtt_subscriber, {Topic, shared(Share, Subscriber)}),
+%    ets:delete_object(mqtt_subscriber, {Topic, shared(Share, Subscriber)}),
     (not ets:member(mqtt_subscriber, Topic)) andalso emqttd_router:del_route(Topic).
 
 del_local_subscriber_(Share, Topic, Subscriber) ->
-    ets:delete_object(mqtt_subscriber, {{local, Topic}, shared(Share, Subscriber)}),
+    kvs:delete(mqtt_subscriber, {{local, Topic}, shared(Share, Subscriber)}),
+%    ets:delete_object(mqtt_subscriber, {{local, Topic}, shared(Share, Subscriber)}),
     (not ets:member(mqtt_subscriber, {local, Topic})) andalso emqttd_router:del_local_route(Topic).
 
 shared(undefined, Subscriber) ->

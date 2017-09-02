@@ -59,13 +59,13 @@
 %% MQTT Subscription
 %%--------------------------------------------------------------------
 
--record(mqtt_subscription,
-        { subid :: binary() | atom(),
-          topic :: binary(),
-          qos   :: 0 | 1 | 2
-        }).
+%-record(mqtt_subscription,
+%        { subid :: binary() | atom(),
+%          topic :: binary(),
+%          qos   :: 0 | 1 | 2
+%        }).
 
--type(mqtt_subscription() :: #mqtt_subscription{}).
+%-type(mqtt_subscription() :: #mqtt_subscription{}).
 
 %%--------------------------------------------------------------------
 %% MQTT Client
@@ -193,5 +193,6 @@
 
 -type(mqtt_cli() :: #mqtt_cli{}).
 
+-record(mqtt_subscription, {key,value}).
 -record(mqtt_subproperty, {key,value}).
 -record(mqtt_subscriber, {key,value}).

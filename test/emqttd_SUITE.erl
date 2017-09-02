@@ -117,7 +117,7 @@ groups() ->
 init_per_suite(Config) ->
     application:start(lager),
     application:set_env(kvs,dba,store_mnesia),
-    application:set_env(kvs,schema,[kvs_user, kvs_acl, kvs_feed, kvs_subscription]),
+    application:set_env(kvs,schema,[kvs_feed, emqttd_kvs]),
     application:start(mnesia),
     application:start(gproc),
     application:start(emqttc),
@@ -222,8 +222,8 @@ pubsub(_) ->
     ok = emqttd:subscribe(<<"a/b/c">>, Self, [{qos, 1}]),
     ?assertMatch({error, _}, emqttd:subscribe(<<"a/b/c">>, Self, [{qos, 2}])),
     timer:sleep(10),
-    [{Self, <<"a/b/c">>}] = ets:lookup(mqtt_subscription, Self),
-    [{<<"a/b/c">>, Self}] = ets:lookup(mqtt_subscriber, <<"a/b/c">>),
+    [{mqtt_subscription, Self, <<"a/b/c">>}] = ets:lookup(mqtt_subscription, Self),
+    [{mqtt_subscriber, <<"a/b/c">>, Self}]   = ets:lookup(mqtt_subscriber, <<"a/b/c">>),
     emqttd:publish(emqttd_message:make(ct, <<"a/b/c">>, <<"hello">>)),
     ?assert(receive {dispatch, <<"a/b/c">>, _} -> true after 2 -> false end),
     spawn(fun() ->
@@ -297,6 +297,7 @@ loop_recv(Topic, Timeout, Acc) ->
 
 router_add_del(_) ->
     %% Add
+    mnesia:clear_table(mqtt_route),
     emqttd_router:add_route(<<"#">>),
     emqttd_router:add_route(<<"a/b/c">>),
     emqttd_router:add_route(<<"+/#">>, node()),
@@ -327,7 +328,8 @@ router_print(_) ->
               #mqtt_route{topic = <<"#">>,     node = node()},
               #mqtt_route{topic = <<"+/#">>,   node = node()}],
     emqttd_router:add_routes(Routes),
-    emqttd_router:print(<<"a/b/c">>).
+    emqttd_router:print(<<"a/b/c">>),
+    mnesia:clear_table(mqtt_route).
 
 router_unused(_) ->
     gen_server:call(emqttd_router, bad_call),
@@ -449,11 +451,12 @@ request_status(_) ->
     ?assertEqual(binary_to_list(Status), Return).
 
 request_publish(_) ->
-    ok = emqttd:subscribe(<<"a/b/c">>, self(), [{qos, 1}]),
-    Params = "qos=1&retain=0&topic=a/b/c&message=hello",
+    ok = emqttd:subscribe(<<"a/b/c/d">>, self(), [{qos, 1}]),
+    Params = "qos=1&retain=0&topic=a/b/c/d&message=hello",
     ?assert(connect_emqttd_publish_(post, "mqtt/publish", Params, auth_header_("", ""))),
-    ?assert(receive {dispatch, <<"a/b/c">>, _} -> true after 2 -> false end),
-    emqttd:unsubscribe(<<"a/b/c">>).
+    timer:sleep(100),
+    ?assert(receive {dispatch, <<"a/b/c/d">>, _} -> true after 200 -> false end),
+    emqttd:unsubscribe(<<"a/b/c/d">>).
 
 connect_emqttd_publish_(Method, Api, Params, Auth) ->
     Url = "http://127.0.0.1:8083/" ++ Api,
@@ -467,7 +470,7 @@ connect_emqttd_publish_(Method, Api, Params, Auth) ->
     {ok, {{"HTTP/1.1", 404, _}, _, []}} ->
         false
     end.
-	
+
 auth_header_(User, Pass) ->
     Encoded = base64:encode_to_string(lists:append([User,":",Pass])),
     {"Authorization","Basic " ++ Encoded}.
@@ -672,22 +675,22 @@ cli_vm(_) ->
 cleanSession_validate(_) ->
     {ok, C1} = emqttc:start_link([{host, "127.0.0.1"},
                                          {port, 1883},
-                                         {client_id, <<"c1">>},
+                                         {client_id, <<"c2">>},
                                          {clean_sess, false}]),
-    timer:sleep(10),
-    emqttc:subscribe(C1, <<"topic">>, qos0),
+    emqttc:subscribe(C1, <<"topic2">>, qos0),
+    timer:sleep(20),
     emqttc:disconnect(C1),
     {ok, Pub} = emqttc:start_link([{host, "127.0.0.1"},
                                          {port, 1883},
-                                         {client_id, <<"pub">>}]),
+                                         {client_id, <<"pub2">>}]),
 
-    emqttc:publish(Pub, <<"topic">>, <<"m1">>, [{qos, 0}]),
-    timer:sleep(10),
+    emqttc:publish(Pub, <<"topic2">>, <<"m1">>, [{qos, 0}]),
+    timer:sleep(20),
     {ok, C11} = emqttc:start_link([{host, "127.0.0.1"},
                                    {port, 1883},
-                                   {client_id, <<"c1">>},
+                                   {client_id, <<"c2">>},
                                    {clean_sess, false}]),
-    timer:sleep(100),
+    timer:sleep(20),
     Metrics = emqttd_metrics:all(),
     ?assertEqual(1, proplists:get_value('messages/qos0/sent', Metrics)),
     ?assertEqual(1, proplists:get_value('messages/qos0/received', Metrics)),

@@ -554,6 +554,15 @@ print({ClientId, _ClientPid, _Persistent, SessInfo}) ->
            "deliver_msg=~w, enqueue_msg=~w, created_at=~w)~n",
             [ClientId | [format(Key, get_value(Key, Data)) || Key <- InfoKeys]]).
 
+print(subscription, {mqtt_subscription, Sub, {_Share, Topic}}) when is_pid(Sub) ->
+    ?PRINT("~p -> ~s~n", [Sub, Topic]);
+print(subscription, {mqtt_subscription, Sub, Topic}) when is_pid(Sub) ->
+    ?PRINT("~p -> ~s~n", [Sub, Topic]);
+print(subscription, {mqtt_subscription, Sub, {_Share, Topic}}) ->
+    ?PRINT("~s -> ~s~n", [Sub, Topic]);
+print(subscription, {mqtt_subscription, Sub, Topic}) ->
+    ?PRINT("~s -> ~s~n", [Sub, Topic]);
+
 print(subscription, {Sub, {_Share, Topic}}) when is_pid(Sub) ->
     ?PRINT("~p -> ~s~n", [Sub, Topic]);
 print(subscription, {Sub, Topic}) when is_pid(Sub) ->
@@ -562,6 +571,7 @@ print(subscription, {Sub, {_Share, Topic}}) ->
     ?PRINT("~s -> ~s~n", [Sub, Topic]);
 print(subscription, {Sub, Topic}) ->
     ?PRINT("~s -> ~s~n", [Sub, Topic]).
+
 
 format(created_at, Val) ->
     emqttd_time:now_secs(Val);
