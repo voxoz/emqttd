@@ -8,7 +8,7 @@ Features
 * Persistent Routes: [mqtt_topic, mqtt_router]
 * Persistent Subscriptions: [mqtt_subproperty, mqtt_subscription, mqtt_subscriber]
 * KVS database: [ets, mnesia, redis, aerospike, mongodb]
-* MAD compatible
+* MAD and REBAR compatible
 
 Try
 ---
