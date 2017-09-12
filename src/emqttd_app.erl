@@ -27,7 +27,7 @@
 %% Application callbacks
 -export([start/2, stop/1]).
 
--export([start_listener/1, stop_listener/1]).
+-export([start_listener/1, stop_listener/1,register_acl_mod/0,start_listeners/0,start_servers/1]).
 
 -type(listener() :: {atom(), esockd:listen_on(), [esockd:option()]}).
 
@@ -38,17 +38,20 @@
 %%--------------------------------------------------------------------
 
 start(_Type, _Args) ->
+    lager:set_loglevel(lager_console_backend, error),
     print_banner(),
-    kvs:join(),
     emqttd_mnesia:start(),
+    kvs:join(),
     {ok, Sup} = emqttd_sup:start_link(),
-    start_servers(Sup),
-    emqttd_cli:load(),
-    register_acl_mod(),
-    emqttd_plugins:init(),
-    emqttd_plugins:load(),
-    start_listeners(),
-    register(emqttd, self()),
+    [ begin _ = erlang:apply(X,Y,Z),
+            io:format("~p:~p: ~p~n",[X,Y,ok]) end
+            || {X,Y,Z} <- [{?MODULE,start_servers,[Sup]},
+                           {emqttd_cli,load,[]},
+                           {?MODULE,register_acl_mod,[]},
+                           {emqttd_plugins,init,[]},
+%                           {emqttd_plugins,load,[]},
+                           {?MODULE,start_listeners,[]},
+                           {register,[emqttd, self()]}] ],
     print_vsn(),
     {ok, Sup}.
 
@@ -88,9 +91,10 @@ start_servers(Sup) ->
                {"emqttd alarm", emqttd_alarm},
                {"emqttd mod supervisor", emqttd_mod_sup},
                {"emqttd bridge supervisor", {supervisor, emqttd_bridge_sup_sup}},
-               {"emqttd access control", emqttd_access_control},
-               {"emqttd system monitor", {supervisor, emqttd_sysmon_sup}}],
-    [start_server(Sup, Server) || Server <- Servers].
+               {"emqttd system monitor", {supervisor, emqttd_sysmon_sup}},
+               {"emqttd access control", emqttd_access_control}],
+    [start_server(Sup, Server) || Server <- Servers],
+    io:format("Servers Done~n").
 
 start_server(_Sup, {Name, F}) when is_function(F) ->
     ?PRINT("~s is starting...", [Name]),
