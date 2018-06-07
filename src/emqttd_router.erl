@@ -67,7 +67,7 @@ mnesia(boot) ->
 mnesia(copy) ->
 %    ok = emqttd_mnesia:copy_table(mqtt_topic, ram_copies),
 %    ok = emqttd_mnesia:copy_table(mqtt_route, ram_copies),
-    ok.
+    ok= ekka_mnesia:copy_table(mqtt_route, ram_copies).
 
 %%--------------------------------------------------------------------
 %% Start the Router
@@ -218,6 +218,7 @@ stop() -> gen_server:call(?ROUTER, stop).
 %%--------------------------------------------------------------------
 
 init([]) ->
+    ekka:monitor(membership),
     mnesia:subscribe(system),
     ets:new(mqtt_local_route, [set, named_table, protected]),
     {ok, TRef}  = timer:send_interval(timer:seconds(1), stats),
@@ -273,7 +274,8 @@ handle_info(_Info, State) ->
 
 terminate(_Reason, #state{stats_timer = TRef}) ->
     timer:cancel(TRef),
-    mnesia:unsubscribe(system).
+    mnesia:unsubscribe(system),
+    ekka:unmonitor(membership).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.

@@ -41,22 +41,22 @@
 -spec(mnesia(boot | copy) -> ok).
 mnesia(boot) ->
     %% Trie Table
-    ok = emqttd_mnesia:create_table(mqtt_trie, [
+    ok = ekka_mnesia:create_table(mqtt_trie, [
                 {disc_copies, [node()]},
                 {record_name, trie},
                 {attributes, record_info(fields, trie)}]),
     %% Trie Node Table
-    ok = emqttd_mnesia:create_table(mqtt_trie_node, [
+    ok = ekka_mnesia:create_table(mqtt_trie_node, [
                 {disc_copies, [node()]},
                 {record_name, trie_node},
                 {attributes, record_info(fields, trie_node)}]);
 
 mnesia(copy) ->
     %% Copy Trie Table
-%    ok = emqttd_mnesia:copy_table(trie),
+    ok = ekka_mnesia:copy_table(mqtt_trie),
     %% Copy Trie Node Table
 %    ok = emqttd_mnesia:copy_table(trie_node),
-   ok.
+    ok = ekka_mnesia:copy_table(mqtt_trie_node).
 
 %%--------------------------------------------------------------------
 %% Trie API

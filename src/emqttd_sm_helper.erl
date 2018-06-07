@@ -43,6 +43,7 @@ start_link(StatsFun) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [StatsFun], []).
 
 init([StatsFun]) ->
+    ekka:monitor(membership),
     mnesia:subscribe(system),
     {ok, TRef} = timer:send_interval(timer:seconds(1), tick),
     {ok, #state{stats_fun = StatsFun, tick_tref = TRef}}.
@@ -75,7 +76,8 @@ handle_info(Info, State) ->
 
 terminate(_Reason, _State = #state{tick_tref = TRef}) ->
     timer:cancel(TRef),
-    mnesia:unsubscribe(system).
+    mnesia:unsubscribe(system),
+    ekka:unmonitor(membership).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
