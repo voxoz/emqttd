@@ -54,11 +54,11 @@
 %%--------------------------------------------------------------------
 
 mnesia(boot) ->
-    ok = emqttd_mnesia:create_table(mqtt_topic, [
+    ok = ekka_mnesia:create_table(mqtt_topic, [
                 {disc_copies, [node()]},
                 {record_name, mqtt_topic},
                 {attributes, record_info(fields, mqtt_topic)}]),
-    ok = emqttd_mnesia:create_table(mqtt_route, [
+    ok = ekka_mnesia:create_table(mqtt_route, [
                 {type, bag},
                 {disc_copies, [node()]},
                 {record_name, mqtt_route},
