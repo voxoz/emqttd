@@ -40,7 +40,7 @@
 start(_Type, _Args) ->
     lager:set_loglevel(lager_console_backend, error),
     print_banner(),
-%    ekka:start(),
+    ekka:start(),
     kvs:join(),
 %    emqttd_mnesia:start(),
     {ok, Sup} = emqttd_sup:start_link(),
