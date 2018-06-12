@@ -16,7 +16,6 @@
 
 %% @doc Session Helper.
 -module(emqttd_sm_helper).
--compile({parse_transform, lager_transform}).
 
 -author("Feng Lee <feng@emqtt.io>").
 
@@ -28,6 +27,8 @@
 
 -include_lib("stdlib/include/ms_transform.hrl").
 
+-compile({parse_transform, lager_transform}).
+
 %% API Function Exports
 -export([start_link/1]).
 
@@ -37,6 +38,8 @@
 
 -record(state, {stats_fun, tick_tref}).
 
+-define(LOCK, {?MODULE, clean_sessions}).
+
 %% @doc Start a session helper
 -spec(start_link(fun()) -> {ok, pid()} | ignore | {error, any()}).
 start_link(StatsFun) ->
@@ -44,7 +47,7 @@ start_link(StatsFun) ->
 
 init([StatsFun]) ->
     ekka:monitor(membership),
-    mnesia:subscribe(system),
+%    mnesia:subscribe(system),
     {ok, TRef} = timer:send_interval(timer:seconds(1), tick),
     {ok, #state{stats_fun = StatsFun, tick_tref = TRef}}.
 
@@ -68,6 +71,20 @@ handle_info({mnesia_system_event, {mnesia_down, Node}}, State) ->
 handle_info({mnesia_system_event, {mnesia_up, _Node}}, State) ->
     {noreply, State};
 
+handle_info({membership, {mnesia, down, Node}}, State) ->
+    Fun = fun() ->
+        ClientIds =
+            mnesia:select(mqtt_session, [{#mqtt_session{client_id = '$1', sess_pid = '$2', _ = '_'},
+                [{'==', {node, '$2'}, Node}], ['$1']}]),
+        lists:foreach(fun(ClientId) -> mnesia:delete({mqtt_session, ClientId}) end, ClientIds)
+          end,
+    global:trans({?LOCK, self()}, fun() -> mnesia:async_dirty(Fun) end),
+    {noreply, State, hibernate};
+
+handle_info({membership, _Event}, State) ->
+    {noreply, State};
+
+
 handle_info(tick, State) ->
     {noreply, setstats(State), hibernate};
 
@@ -76,7 +93,7 @@ handle_info(Info, State) ->
 
 terminate(_Reason, _State = #state{tick_tref = TRef}) ->
     timer:cancel(TRef),
-    mnesia:unsubscribe(system),
+   % mnesia:unsubscribe(system),
     ekka:unmonitor(membership).
 
 code_change(_OldVsn, State, _Extra) ->
