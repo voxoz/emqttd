@@ -146,6 +146,10 @@ handle_call({start_session, false, {ClientId, Username}, ClientPid}, _From, Stat
                 {ok, SessPid} ->
                     {reply, {ok, SessPid, true}, State};
                 {error, Erorr} ->
+                    mnesia:transaction(fun() ->
+                                mnesia:delete_object(mqtt_session, Session, write)
+                               end),
+                    create_session({false, {ClientId, Username}, ClientPid}, State),
                     {reply, {error, Erorr}, State}
              end
     end;
@@ -171,19 +175,24 @@ handle_call(Req, _From, State) ->
 handle_cast(Msg, State) ->
     ?UNEXPECTED_MSG(Msg, State).
 
+
 handle_info({'DOWN', MRef, process, DownPid, _Reason}, State) ->
     case dict:find(MRef, State#state.monitors) of
         {ok, ClientId} ->
-            NewState =
-              case mnesia:dirty_read({mqtt_session, ClientId}) of
-                  [] -> State;
-                  [Sess = #mqtt_session{sess_pid = DownPid}] ->
-                      mnesia:dirty_delete_object(Sess),
-                      erase_monitor(MRef, State);
-                  [_Sess] ->
-                      State
-              end,
-            {noreply, NewState, hibernate};
+            {_R,NewState} =
+            mnesia:transaction(fun() ->
+                case mnesia:wread({mqtt_session, ClientId}) of
+                    [] ->
+                        State;
+                    [Sess = #mqtt_session{sess_pid = DownPid}] ->
+                        emqttd_stats:del_session_stats(ClientId),
+                        mnesia:delete_object(mqtt_session, Sess, write),
+                        erase_monitor(MRef, State);
+                    [_Sess] ->
+                        State
+                end
+                               end),
+            {noreply,  NewState, hibernate};
         error ->
             lager:error("MRef of session ~p not found", [DownPid]),
             {noreply, State}
