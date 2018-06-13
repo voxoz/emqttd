@@ -174,18 +174,16 @@ handle_cast(Msg, State) ->
 handle_info({'DOWN', MRef, process, DownPid, _Reason}, State) ->
     case dict:find(MRef, State#state.monitors) of
         {ok, ClientId} ->
-            mnesia:transaction(fun() ->
-                case mnesia:wread({mqtt_session, ClientId}) of
-                    [] ->
-                        ok;
-                    [Sess = #mqtt_session{sess_pid = DownPid}] ->
-                        emqttd_stats:del_session_stats(ClientId),
-                        mnesia:delete_object(mqtt_session, Sess, write);
-                    [_Sess] ->
-                        ok
-                    end
-                end),
-            {noreply, erase_monitor(MRef, State), hibernate};
+            NewState =
+              case mnesia:dirty_read({mqtt_session, ClientId}) of
+                  [] -> State;
+                  [Sess = #mqtt_session{sess_pid = DownPid}] ->
+                      mnesia:dirty_delete_object(Sess),
+                      erase_monitor(MRef, State);
+                  [_Sess] ->
+                      State
+              end,
+            {noreply, NewState, hibernate};
         error ->
             lager:error("MRef of session ~p not found", [DownPid]),
             {noreply, State}
