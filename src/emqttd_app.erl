@@ -41,8 +41,7 @@ start(_Type, _Args) ->
     lager:set_loglevel(lager_console_backend, error),
     print_banner(),
     ekka:start(),
-    kvs:join(),
-%    emqttd_mnesia:start(),
+%   emqttd_mnesia:start(),
     {ok, Sup} = emqttd_sup:start_link(),
     [ begin _ = erlang:apply(X,Y,Z),
             io:format("~p:~p: ~p~n",[X,Y,ok]) end
