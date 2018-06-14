@@ -239,7 +239,8 @@ code_change(_OldVsn, State, _Extra) ->
 
 do_subscribe_(Topic, Subscriber, Options, State) ->
     ekka_mnesia:ensure_ok(ekka_mnesia:wait_for(tables)),
-    case ets:lookup(mqtt_subproperty, {Topic, Subscriber}) of
+    try
+      case ets:lookup(mqtt_subproperty, {Topic, Subscriber}) of
         [] ->
             emqttd_pubsub:async_subscribe(Topic, Subscriber, Options),
             Share = proplists:get_value(share, Options),
@@ -248,7 +249,8 @@ do_subscribe_(Topic, Subscriber, Options, State) ->
             kvs:put({mqtt_subproperty, {Topic, Subscriber}, Options}),
             {ok, monitor_subpid(Subscriber, State)};
         [_] ->
-            {error, {already_subscribed, Topic}}
+            {error, {already_subscribed, Topic}} end
+    catch  _:_ -> kvs:join(), do_subscribe_(Topic, Subscriber, Options, State)
     end.
 
 add_subscription_(undefined, Subscriber, Topic) ->
