@@ -238,7 +238,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 
 do_subscribe_(Topic, Subscriber, Options, State) ->
-    ekka_mnesia:wait_for(start),
+    case ekka_mnesia:wait_for(start) of ok -> ekka_mnesia:ensure_ok(ekka_mnesia:wait_for(tables)) ;
+                                        _  -> timer:sleep(1000), ekka_mnesia:wait_for(start) end,
     try case ets:lookup(mqtt_subproperty, {Topic, Subscriber}) of
         [] ->
             emqttd_pubsub:async_subscribe(Topic, Subscriber, Options),
@@ -250,7 +251,7 @@ do_subscribe_(Topic, Subscriber, Options, State) ->
         [_] ->
             {error, {already_subscribed, Topic}} end
     catch E:R -> lager:warning("mqtt_subproperty is not ready: ~s", [R]),
-               terminate(R,State)
+                 {error, E}
     end.
 
 add_subscription_(undefined, Subscriber, Topic) ->
