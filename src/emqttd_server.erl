@@ -238,7 +238,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 
 do_subscribe_(Topic, Subscriber, Options, State) ->
-    try ekka_mnesia:ensure_ok(ekka_mnesia:wait_for(tables)),
+    try
       case ets:lookup(mqtt_subproperty, {Topic, Subscriber}) of
         [] ->
             emqttd_pubsub:async_subscribe(Topic, Subscriber, Options),
