@@ -250,7 +250,7 @@ do_subscribe_(Topic, Subscriber, Options, State) ->
             {ok, monitor_subpid(Subscriber, State)};
         [_] ->
             {error, {already_subscribed, Topic}} end
-    catch  _:_ -> kvs:join(), do_subscribe_(Topic, Subscriber, Options, State)
+    catch  _:_ -> lager:warning("mqtt_subproperty is not ready: ~s", [State])
     end.
 
 add_subscription_(undefined, Subscriber, Topic) ->
