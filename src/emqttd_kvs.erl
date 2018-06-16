@@ -26,7 +26,7 @@ tables()   -> [ #table{name=mqtt_subproperty,
 
 mnesia(copy) ->
     %% Copy Trie Table
-    ok = ekka_mnesia:copy_table(mqtt_subproperty,disc_copy),
+    ok = ekka_mnesia:copy_table(mqtt_subproperty,disc_copies),
     %% Copy Trie Node Table
-    ok = ekka_mnesia:copy_table(mqtt_subscriber,disc_copy),
-    ok = ekka_mnesia:copy_table(mqtt_subscription,disc_copy).
+    ok = ekka_mnesia:copy_table(mqtt_subscriber,disc_copies),
+    ok = ekka_mnesia:copy_table(mqtt_subscription,disc_copies).

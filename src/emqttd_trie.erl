@@ -53,10 +53,10 @@ mnesia(boot) ->
 
 mnesia(copy) ->
     %% Copy Trie Table
-    ok = ekka_mnesia:copy_table(mqtt_trie,disc_copy),
+    ok = ekka_mnesia:copy_table(mqtt_trie,disc_copies),
     %% Copy Trie Node Table
 %    ok = emqttd_mnesia:copy_table(trie_node),
-    ok = ekka_mnesia:copy_table(mqtt_trie_node,disc_copy).
+    ok = ekka_mnesia:copy_table(mqtt_trie_node,disc_copies).
 
 %%--------------------------------------------------------------------
 %% Trie API
