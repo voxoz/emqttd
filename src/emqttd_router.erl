@@ -67,7 +67,8 @@ mnesia(boot) ->
 mnesia(copy) ->
 %    ok = emqttd_mnesia:copy_table(mqtt_topic, ram_copies),
 %    ok = emqttd_mnesia:copy_table(mqtt_route, ram_copies),
-    ok= ekka_mnesia:copy_table(mqtt_route, ram_copies).
+    ok= ekka_mnesia:copy_table(mqtt_route, disc_copies),
+    ok = ekka_mnesia:copy_table(mqtt_topic, disc_copies).
 
 %%--------------------------------------------------------------------
 %% Start the Router
