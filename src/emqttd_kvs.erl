@@ -30,5 +30,6 @@ mnesia(copy) ->
     %% Copy Trie Node Table
     %ok = ekka_mnesia:copy_table(mqtt_subscriber,disc_copies),
     %ok = ekka_mnesia:copy_table(mqtt_subscription,disc_copies),
+    mnesia:wait_for_tables([ T#table.name || T <- kvs:tables()],infinity),
     [ ekka_mnesia:copy_table(Tab,disc_copies) || #table{name =Tab} <- kvs:tables()].
 
