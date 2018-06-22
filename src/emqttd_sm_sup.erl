@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
+%% Copyright (c) 2013-2018 EMQ Enterprise, Inc. (http://emqtt.io)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -24,8 +24,6 @@
 
 -include("emqttd.hrl").
 
--define(SM, emqttd_sm).
-
 -define(HELPER, emqttd_sm_helper).
 
 %% API
@@ -44,11 +42,11 @@ init([]) ->
     %% Helper
     StatsFun = emqttd_stats:statsfun('sessions/count', 'sessions/max'),
     Helper = {?HELPER, {?HELPER, start_link, [StatsFun]},
-                permanent, 5000, worker, [?HELPER]},
+              permanent, 5000, worker, [?HELPER]},
 
     %% SM Pool Sup
-    MFA = {?SM, start_link, []},
-    PoolSup = emqttd_pool_sup:spec([?SM, hash, erlang:system_info(schedulers), MFA]),
+    MFA = {emqttd_sm, start_link, []},
+    PoolSup = emqttd_pool_sup:spec([emqttd_sm, hash, erlang:system_info(schedulers), MFA]),
 
     {ok, {{one_for_all, 10, 3600}, [Helper, PoolSup]}}.
 
