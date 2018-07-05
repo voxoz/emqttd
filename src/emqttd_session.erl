@@ -262,7 +262,10 @@ stats(#state{max_subscriptions = MaxSubscriptions,
                   {subscriptions,     maps:size(Subscriptions)},
                   {max_inflight,      MaxInflight},
                   {inflight_len,      Inflight:size()},
-                  {max_mqueue,        ?MQueue:max_len(MQueue)},
+                  {max_mqueue,        case ?MQueue:max_len(MQueue) of
+                                                                   infinity -> 0;
+                                                                   Len -> Len
+                                                               end},
                   {mqueue_len,        ?MQueue:len(MQueue)},
                   {mqueue_dropped,    ?MQueue:dropped(MQueue)},
                   {max_awaiting_rel,  MaxAwaitingRel},

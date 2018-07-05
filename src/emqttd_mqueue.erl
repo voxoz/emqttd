@@ -78,7 +78,7 @@
                  %% priority table
                  pseq = 0, priorities = [],
                  %% len of simple queue
-                 len = 0, max_len = 0,
+                 len = 0, max_len = infinity,
                  low_wm = ?LOW_WM, high_wm = ?HIGH_WM,
                  qos0 = false, dropped = 0,
                  alarm_fun}).
@@ -91,7 +91,7 @@
 -spec(new(iolist(), list(option()), fun()) -> mqueue()).
 new(Name, Opts, AlarmFun) ->
     Type = get_value(type, Opts, simple),
-    MaxLen = get_value(max_length, Opts, 0),
+    MaxLen = get_value(max_length, Opts, infinity),
     init_q(#mqueue{type = Type, name = iolist_to_binary(Name),
                    len = 0, max_len = MaxLen,
                    low_wm = low_wm(MaxLen, Opts),
@@ -115,13 +115,13 @@ insert_p(Topic, P, MQ = #mqueue{priorities = Tab, pseq = Seq}) ->
     <<PInt:48>> = <<P:8, (erlang:phash2(Topic)):32, Seq:8>>,
     {PInt, MQ#mqueue{priorities = [{Topic, PInt} | Tab], pseq = Seq + 1}}.
 
-low_wm(0, _Opts) ->
-    undefined;
+low_wm(infinity, _Opts) ->
+    infinity;
 low_wm(MaxLen, Opts) ->
     round(MaxLen * get_value(low_watermark, Opts, ?LOW_WM)).
 
-high_wm(0, _Opts) ->
-    undefined;
+high_wm(infinity, _Opts) ->
+    infinity;
 high_wm(MaxLen, Opts) ->
     round(MaxLen * get_value(high_watermark, Opts, ?HIGH_WM)).
 
@@ -157,7 +157,7 @@ stats(#mqueue{type = Type, q = Q, max_len = MaxLen, len = Len, dropped = Dropped
 -spec(in(mqtt_message(), mqueue()) -> mqueue()).
 in(#mqtt_message{qos = ?QOS_0}, MQ = #mqueue{qos0 = false}) ->
     MQ;
-in(Msg, MQ = #mqueue{type = simple, q = Q, len = Len, max_len = 0}) ->
+in(Msg, MQ = #mqueue{type = simple, q = Q, len = Len, max_len = infinity}) ->
     MQ#mqueue{q = queue:in(Msg, Q), len = Len + 1};
 in(Msg, MQ = #mqueue{type = simple, q = Q, len = Len, max_len = MaxLen, dropped = Dropped})
     when Len >= MaxLen ->
@@ -168,7 +168,7 @@ in(Msg, MQ = #mqueue{type = simple, q = Q, len = Len}) ->
 
 in(Msg = #mqtt_message{topic = Topic}, MQ = #mqueue{type = priority, q = Q,
                                                     priorities = Priorities,
-                                                    max_len = 0}) ->
+                                                    max_len = infinity}) ->
     case lists:keysearch(Topic, 1, Priorities) of
         {value, {_, Pri}} ->
             MQ#mqueue{q = ?PQUEUE:in(Msg, Pri, Q)};
@@ -195,7 +195,7 @@ in(Msg = #mqtt_message{topic = Topic}, MQ = #mqueue{type = priority, q = Q,
 
 out(MQ = #mqueue{type = simple, len = 0}) ->
     {empty, MQ};
-out(MQ = #mqueue{type = simple, q = Q, len = Len, max_len = 0}) ->
+out(MQ = #mqueue{type = simple, q = Q, len = Len, max_len = infinity}) ->
     {R, Q2} = queue:out(Q),
     {R, MQ#mqueue{q = Q2, len = Len - 1}};
 out(MQ = #mqueue{type = simple, q = Q, len = Len}) ->
