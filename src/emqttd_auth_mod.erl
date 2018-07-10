@@ -35,7 +35,7 @@
 -callback(check(Client   :: mqtt_client(),
                 Password :: binary(),
                 State    :: any())
-          -> ok | | {ok, boolean()} | ignore | {error, string()}).
+          -> ok | {ok, boolean()} | ignore | {error, string()}).
 
 -callback(description() -> string()).
 
