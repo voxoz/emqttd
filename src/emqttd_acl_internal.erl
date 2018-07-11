@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
+%% Copyright (c) 2013-2018 EMQ Enterprise, Inc. (http://emqtt.io)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@
 
 -define(ACL_RULE_TAB, mqtt_acl_rule).
 
--record(state, {config, nomatch = allow}).
+-record(state, {config}).
 
 %%--------------------------------------------------------------------
 %% API
@@ -86,11 +86,11 @@ filter(_PubSub, {_AllowDeny, _Who, _, _Topics}) ->
       State  :: #state{}).
 check_acl(_Who, #state{config = undefined}) ->
     allow;
-check_acl({Client, PubSub, Topic}, #state{nomatch = Default}) ->
+check_acl({Client, PubSub, Topic}, #state{}) ->
     case match(Client, Topic, lookup(PubSub)) of
         {matched, allow} -> allow;
         {matched, deny}  -> deny;
-        nomatch          -> Default
+        nomatch          -> ignore
     end.
 
 lookup(PubSub) ->

@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
+%% Copyright (c) 2013-2018 EMQ Enterprise, Inc. (http://emqtt.io)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 %%--------------------------------------------------------------------
 
 -module(emqttd_access_control).
--compile({parse_transform, lager_transform}).
 
 -behaviour(gen_server).
 
@@ -44,12 +43,12 @@
 %%--------------------------------------------------------------------
 
 %% @doc Start access control server.
--spec(start_link() -> {ok, pid()} | ignore | {error, any()}).
+-spec(start_link() -> {ok, pid()} | ignore | {error, term()}).
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %% @doc Authenticate MQTT Client.
--spec(auth(Client :: mqtt_client(), Password :: password()) -> ok | {error, any()}).
+-spec(auth(Client :: mqtt_client(), Password :: password()) -> ok | {ok, boolean()} | {error, term()}).
 auth(Client, Password) when is_record(Client, mqtt_client) ->
     auth(Client, Password, lookup_mods(auth)).
 auth(_Client, _Password, []) ->
@@ -72,16 +71,10 @@ auth(Client, Password, [{Mod, State, _Seq} | Mods]) ->
       PubSub :: pubsub(),
       Topic  :: binary()).
 check_acl(Client, PubSub, Topic) when ?PS(PubSub) ->
-    case lookup_mods(acl) of
-        []      -> case emqttd:env(allow_anonymous, false) of
-                       true  -> allow;
-                       false -> deny
-                   end;
-        AclMods -> check_acl(Client, PubSub, Topic, AclMods)
-    end.
-check_acl(#mqtt_client{client_id = ClientId}, PubSub, Topic, []) ->
-    lager:error("ACL: nomatch for ~s ~s ~s", [ClientId, PubSub, Topic]),
-    allow;
+    check_acl(Client, PubSub, Topic, lookup_mods(acl)).
+
+check_acl(_Client, _PubSub, _Topic, []) ->
+    emqttd:env(acl_nomatch, allow);
 check_acl(Client, PubSub, Topic, [{Mod, State, _Seq}|AclMods]) ->
     case Mod:check_acl({Client, PubSub, Topic}, State) of
         allow  -> allow;
@@ -95,16 +88,16 @@ reload_acl() ->
     [Mod:reload_acl(State) || {Mod, State, _Seq} <- lookup_mods(acl)].
 
 %% @doc Register Authentication or ACL module.
--spec(register_mod(auth | acl, atom(), list()) -> ok | {error, any()}).
+-spec(register_mod(auth | acl, atom(), list()) -> ok | {error, term()}).
 register_mod(Type, Mod, Opts) when Type =:= auth; Type =:= acl->
     register_mod(Type, Mod, Opts, 0).
 
--spec(register_mod(auth | acl, atom(), list(), non_neg_integer()) -> ok | {error, any()}).
+-spec(register_mod(auth | acl, atom(), list(), non_neg_integer()) -> ok | {error, term()}).
 register_mod(Type, Mod, Opts, Seq) when Type =:= auth; Type =:= acl->
     gen_server:call(?SERVER, {register_mod, Type, Mod, Opts, Seq}).
 
 %% @doc Unregister authentication or ACL module
--spec(unregister_mod(Type :: auth | acl, Mod :: atom()) -> ok | {error, any()}).
+-spec(unregister_mod(Type :: auth | acl, Mod :: atom()) -> ok | {error, not_found | term()}).
 unregister_mod(Type, Mod) when Type =:= auth; Type =:= acl ->
     gen_server:call(?SERVER, {unregister_mod, Type, Mod}).
 
