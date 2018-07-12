@@ -29,15 +29,18 @@
 -boot_mnesia({mnesia, [boot]}).
 -copy_mnesia({mnesia, [copy]}).
 
-%% Start/Stop
--export([start_link/0, topics/0, local_topics/0, stop/0]).
+-export([start_link/0, topics/0, local_topics/0]).
+
+%% For eunit tests
+-export([start/0, stop/0]).
 
 %% Route APIs
 -export([add_route/1, add_route/2, add_routes/1, match/1, print/1,
          del_route/1, del_route/2, del_routes/1, has_route/1]).
 
 %% Local Route API
--export([add_local_route/1, del_local_route/1, match_local/1]).
+-export([get_local_routes/0, add_local_route/1, match_local/1,
+         del_local_route/1, clean_local_routes/0]).
 
 %% gen_server Function Exports
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -48,6 +51,8 @@
 -record(state, {stats_timer}).
 
 -define(ROUTER, ?MODULE).
+
+-define(LOCK, {?ROUTER, clean_routes}).
 
 %%--------------------------------------------------------------------
 %% Mnesia Bootstrap
@@ -78,19 +83,26 @@ start_link() ->
     gen_server:start_link({local, ?ROUTER}, ?MODULE, [], []).
 
 %%--------------------------------------------------------------------
-%% API
+%% Topics
 %%--------------------------------------------------------------------
 
+-spec(topics() -> list(binary())).
 topics() ->
     mnesia:dirty_all_keys(mqtt_route).
 
+-spec(local_topics() -> list(binary())).
 local_topics() ->
     ets:select(mqtt_local_route, [{{'$1', '_'}, [], ['$1']}]).
+
+%%--------------------------------------------------------------------
+%% Match API
+%%--------------------------------------------------------------------
 
 %% @doc Match Routes.
 -spec(match(Topic:: binary()) -> [mqtt_route()]).
 match(Topic) when is_binary(Topic) ->
-    Matched = mnesia:async_dirty(fun emqttd_trie:match/1, [Topic]),
+    %% Optimize: ets???
+    Matched = mnesia:ets(fun emqttd_trie:match/1, [Topic]),
     %% Optimize: route table will be replicated to all nodes.
     lists:append([ets:lookup(mqtt_route, To) || To <- [Topic | Matched]]).
 
@@ -100,8 +112,12 @@ print(Topic) ->
     [io:format("~s -> ~s~n", [To, Node]) ||
         #mqtt_route{topic = To, node = Node} <- match(Topic)].
 
-%% @doc Add Route
--spec(add_route(binary() | mqtt_route()) -> ok | {error, Reason :: any()}).
+%%--------------------------------------------------------------------
+%% Route Management API
+%%--------------------------------------------------------------------
+
+%% @doc Add Route.
+-spec(add_route(binary() | mqtt_route()) -> ok | {error, Reason :: term()}).
 add_route(Topic) when is_binary(Topic) ->
     add_route(#mqtt_route{topic = Topic, node = node()});
 add_route(Route) when is_record(Route, mqtt_route) ->
@@ -195,6 +211,10 @@ trans(Fun) ->
 %% Local Route API
 %%--------------------------------------------------------------------
 
+-spec(get_local_routes() -> list({binary(), node()})).
+get_local_routes() ->
+    ets:tab2list(mqtt_local_route).
+
 -spec(add_local_route(binary()) -> ok).
 add_local_route(Topic) ->
     gen_server:cast(?ROUTER, {add_local_route, Topic}).
@@ -209,10 +229,19 @@ match_local(Name) ->
         || {Filter, Node} <- ets:tab2list(mqtt_local_route),
            emqttd_topic:match(Name, Filter)].
 
+-spec(clean_local_routes() -> ok).
+clean_local_routes() ->
+    gen_server:call(?ROUTER, clean_local_routes).
+
 dump() ->
     [{route, ets:tab2list(mqtt_route)}, {local_route, ets:tab2list(mqtt_local_route)}].
 
-stop() -> gen_server:call(?ROUTER, stop).
+%% For unit test.
+start() ->
+    gen_server:start({local, ?ROUTER}, ?MODULE, [], []).
+
+stop() ->
+    gen_server:call(?ROUTER, stop).
 
 %%--------------------------------------------------------------------
 %% gen_server Callbacks
@@ -228,6 +257,10 @@ init([]) ->
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
 
+handle_call(clean_local_routes, _From, State) ->
+    ets:delete_all_objects(mqtt_local_route),
+    {reply, ok, State};
+
 handle_call(_Req, _From, State) ->
     {reply, ignore, State}.
 
@@ -239,6 +272,7 @@ handle_cast({add_local_route, Topic}, State) ->
 handle_cast({del_local_route, Topic}, State) ->
     ets:delete(mqtt_local_route, Topic),
     {noreply, State};
+
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -264,6 +298,18 @@ handle_info({mnesia_system_event, {mnesia_overload, Details}}, State) ->
     {noreply, State};
 
 handle_info({mnesia_system_event, _Event}, State) ->
+    {noreply, State};
+
+handle_info({membership, {mnesia, down, Node}}, State) ->
+    global:trans({?LOCK, self()},
+        fun() ->
+            clean_routes_(Node),
+            update_stats_()
+        end),
+    {noreply, State, hibernate};
+
+handle_info({membership, _Event}, State) ->
+    %% ignore
     {noreply, State};
 
 handle_info(stats, State) ->
