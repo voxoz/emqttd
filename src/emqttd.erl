@@ -40,7 +40,12 @@
 %% Debug API
 -export([dump/0]).
 
--type(subscriber() :: pid() | binary()).
+%% Shutdown and reboot
+-export([shutdown/0, shutdown/1, reboot/0]).
+
+-type(subid() :: binary()).
+
+-type(subscriber() :: pid() | subid() | {subid(), pid()}).
 
 -type(suboption() :: local | {qos, non_neg_integer()} | {share, {'$queue' | binary()}}).
 
@@ -160,6 +165,23 @@ run_hooks(Hook, Args) ->
 -spec(run_hooks(atom(), list(any()), any()) -> {ok | stop, any()}).
 run_hooks(Hook, Args, Acc) ->
     emqttd_hooks:run(Hook, Args, Acc).
+
+%%--------------------------------------------------------------------
+%% Shutdown and reboot
+%%--------------------------------------------------------------------
+
+shutdown() ->
+    shutdown(normal).
+
+shutdown(Reason) ->
+    lager:error("EMQ shutdown for ~s", [Reason]),
+    emqttd_plugins:unload(),
+    %roster:stop_vnodes(), timer:sleep(1000),
+    lists:foreach(fun application:stop/1, [roster, bpe, n2o, emqttd, ekka, mochiweb, esockd, gproc]),
+    ak.
+
+reboot() ->
+    lists:foreach(fun application:start/1, [gproc, esockd, mochiweb, ekka, emqttd, n2o, bpe, roster]).
 
 %%--------------------------------------------------------------------
 %% Debug

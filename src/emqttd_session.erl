@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
+%% Copyright (c) 2013-2018 EMQ Enterprise, Inc. (http://emqtt.io)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@
 %%
 %% QoS 1 and QoS 2 messages pending transmission to the Client.
 %%
-%% QoS 2 messages which have been received from the Client, but have not 
+%% QoS 2 messages which have been received from the Client, but have not
 %% been completely acknowledged.
 %%
 %% Optionally, QoS 0 messages pending transmission to the Client.
@@ -44,7 +44,6 @@
 %%
 
 -module(emqttd_session).
--compile({parse_transform, lager_transform}).
 
 -behaviour(gen_server2).
 
@@ -60,6 +59,7 @@
 
 -import(proplists, [get_value/2, get_value/3]).
 
+-compile({parse_transform, lager_transform}).
 %% Session API
 -export([start_link/3, resume/3, destroy/2]).
 
@@ -77,6 +77,8 @@
 %% gen_server2 Message Priorities
 -export([prioritise_call/4, prioritise_cast/3, prioritise_info/3,
          handle_pre_hibernate/1]).
+
+-define(MQueue, emqttd_mqueue).
 
 -record(state,
         {
@@ -119,13 +121,13 @@
          retry_interval = 20000 :: timeout(),
 
          %% Retry Timer
-         retry_timer :: reference(),
+         retry_timer :: reference() | undefined,
 
          %% All QoS1, QoS2 messages published to when client is disconnected.
          %% QoS 1 and QoS 2 messages pending transmission to the Client.
          %%
          %% Optionally, QoS 0 messages pending transmission to the Client.
-         mqueue :: emqttd_mqueue:mqueue(),
+         mqueue :: ?MQueue:mqueue(),
 
          %% Client -> Broker: Inflight QoS2 messages received from client and waiting for pubrel.
          awaiting_rel :: map(),
@@ -137,19 +139,22 @@
          await_rel_timeout = 20000 :: timeout(),
 
          %% Awaiting PUBREL timer
-         await_rel_timer :: reference(),
+         await_rel_timer :: reference() | undefined,
 
          %% Session Expiry Interval
          expiry_interval = 7200000 :: timeout(),
 
          %% Expired Timer
-         expiry_timer :: reference(),
+         expiry_timer :: reference() | undefined,
 
          %% Enable Stats
          enable_stats :: boolean(),
 
          %% Force GC Count
          force_gc_count :: undefined | integer(),
+
+         %% Ignore loop deliver?
+         ignore_loop_deliver = false :: boolean(),
 
          created_at :: erlang:timestamp()
         }).
@@ -169,10 +174,9 @@
                         "Session(~s): " ++ Format, [State#state.client_id | Args])).
 
 %% @doc Start a Session
--spec(start_link(boolean(), {mqtt_client_id(), mqtt_username()}, pid()) -> {ok, pid()} | {error, any()}).
+-spec(start_link(boolean(), {mqtt_client_id(), mqtt_username()}, pid()) -> {ok, pid()} | {error, term()}).
 start_link(CleanSess, {ClientId, Username}, ClientPid) ->
-    gen_server2:start_link(?MODULE, [CleanSess, {ClientId, Username}, ClientPid],
-                           [{spawn_opt, ?FULLSWEEP_OPTS}]). %% Tune GC.
+    gen_server2:start_link(?MODULE, [CleanSess, {ClientId, Username}, ClientPid], []).
 
 %%--------------------------------------------------------------------
 %% PubSub API
@@ -180,7 +184,7 @@ start_link(CleanSess, {ClientId, Username}, ClientPid) ->
 
 %% @doc Subscribe topics
 -spec(subscribe(pid(), [{binary(), [emqttd_topic:option()]}]) -> ok).
-subscribe(Session, TopicTable) ->%%TODO: the ack function??...
+subscribe(Session, TopicTable) -> %%TODO: the ack function??...
     gen_server2:cast(Session, {subscribe, self(), TopicTable, fun(_) -> ok end}).
 
 -spec(subscribe(pid(), mqtt_packet_id(), [{binary(), [emqttd_topic:option()]}]) -> ok).
@@ -190,7 +194,7 @@ subscribe(Session, PacketId, TopicTable) -> %%TODO: the ack function??...
     gen_server2:cast(Session, {subscribe, From, TopicTable, AckFun}).
 
 %% @doc Publish Message
--spec(publish(pid(), mqtt_message()) -> ok | {error, any()}).
+-spec(publish(pid(), mqtt_message()) -> ok | {error, term()}).
 publish(_Session, Msg = #mqtt_message{qos = ?QOS_0}) ->
     %% Publish QoS0 Directly
     emqttd_server:publish(Msg), ok;
@@ -258,12 +262,12 @@ stats(#state{max_subscriptions = MaxSubscriptions,
                   {subscriptions,     maps:size(Subscriptions)},
                   {max_inflight,      MaxInflight},
                   {inflight_len,      Inflight:size()},
-                  {max_mqueue,        case emqttd_mqueue:max_len(MQueue) of
-                                        infinity -> 0;
-                                        Len -> Len
-                                      end},
-                  {mqueue_len,        emqttd_mqueue:len(MQueue)},
-                  {mqueue_dropped,    emqttd_mqueue:dropped(MQueue)},
+                  {max_mqueue,        case ?MQueue:max_len(MQueue) of
+                                                                   infinity -> 0;
+                                                                   Len -> Len
+                                                               end},
+                  {mqueue_len,        ?MQueue:len(MQueue)},
+                  {mqueue_dropped,    ?MQueue:dropped(MQueue)},
                   {max_awaiting_rel,  MaxAwaitingRel},
                   {awaiting_rel_len,  maps:size(AwaitingRel)},
                   {deliver_msg,       get(deliver_msg)},
@@ -283,11 +287,12 @@ init([CleanSess, {ClientId, Username}, ClientPid]) ->
     true = link(ClientPid),
     init_stats([deliver_msg, enqueue_msg]),
     {ok, Env} = emqttd:env(session),
-    {ok, QEnv} = emqttd:env(queue),
+    {ok, QEnv} = emqttd:env(mqueue),
     MaxInflight = get_value(max_inflight, Env, 0),
     EnableStats = get_value(enable_stats, Env, false),
     ForceGcCount = emqttd_gc:conn_max_gc_count(),
-    MQueue = emqttd_mqueue:new(ClientId, QEnv, emqttd_alarm:alarm_fun()),
+    IgnoreLoopDeliver = get_value(ignore_loop_deliver, Env, false),
+    MQueue = ?MQueue:new(ClientId, QEnv, emqttd_alarm:alarm_fun()),
     State = #state{clean_sess        = CleanSess,
                    binding           = binding(ClientPid),
                    client_id         = ClientId,
@@ -306,7 +311,8 @@ init([CleanSess, {ClientId, Username}, ClientPid]) ->
                    expiry_interval   = get_value(expiry_interval, Env),
                    enable_stats      = EnableStats,
                    force_gc_count    = ForceGcCount,
-                   created_at        = os:timestamp()},
+                   created_at        = os:timestamp(),
+                   ignore_loop_deliver = IgnoreLoopDeliver},
     emqttd_sm:register_session(ClientId, CleanSess, info(State)),
     emqttd_hooks:run('session.created', [ClientId, Username]),
     {ok, emit_stats(State), hibernate, {backoff, 1000, 1000, 10000}}.
@@ -377,7 +383,7 @@ handle_cast({subscribe, _From, TopicTable, AckFun},
             State = #state{client_id     = ClientId,
                            username      = Username,
                            subscriptions = Subscriptions}) ->
-    ?LOG(info, "Subscribe ~p", [TopicTable], State),
+    ?LOG(debug, "Subscribe ~p", [TopicTable], State),
     {GrantedQos, Subscriptions1} =
     lists:foldl(fun({Topic, Opts}, {QosAcc, SubMap}) ->
                 NewQos = proplists:get_value(qos, Opts),
@@ -388,6 +394,7 @@ handle_cast({subscribe, _From, TopicTable, AckFun},
                         SubMap;
                     {ok, OldQos} ->
                         emqttd:setqos(Topic, ClientId, NewQos),
+                        emqttd_hooks:run('session.subscribed', [ClientId, Username], {Topic, Opts}),
                         ?LOG(warning, "Duplicated subscribe ~s, old_qos=~w, new_qos=~w",
                             [Topic, OldQos, NewQos], State),
                         maps:put(Topic, NewQos, SubMap);
@@ -405,7 +412,7 @@ handle_cast({unsubscribe, _From, TopicTable},
             State = #state{client_id     = ClientId,
                            username      = Username,
                            subscriptions = Subscriptions}) ->
-    ?LOG(info, "Unsubscribe ~p", [TopicTable], State),
+    ?LOG(debug, "Unsubscribe ~p", [TopicTable], State),
     Subscriptions1 =
     lists:foldl(fun({Topic, Opts}, SubMap) ->
                 case maps:find(Topic, SubMap) of
@@ -450,6 +457,8 @@ handle_cast({pubrel, PacketId}, State = #state{awaiting_rel = AwaitingRel}) ->
     {noreply,
      case maps:take(PacketId, AwaitingRel) of
          {Msg, AwaitingRel1} ->
+             %% Implement Qos2 by method A [MQTT 4.33]
+             %% Dispatch to subscriber when received PUBREL
              spawn(emqttd_server, publish, [Msg]), %%:)
              gc(State#state{awaiting_rel = AwaitingRel1});
          error ->
@@ -480,7 +489,7 @@ handle_cast({resume, ClientId, ClientPid},
                            await_rel_timer = AwaitTimer,
                            expiry_timer    = ExpireTimer}) ->
 
-    ?LOG(info, "Resumed by ~p", [ClientPid], State),
+    ?LOG(debug, "Resumed by ~p", [ClientPid], State),
 
     %% Cancel Timers
     lists:foreach(fun emqttd_misc:cancel_timer/1,
@@ -505,7 +514,7 @@ handle_cast({resume, ClientId, ClientPid},
     %% Clean Session: true -> false?
     if
         CleanSess =:= true ->
-            ?LOG(error, "CleanSess changed to false.", [], State1),
+            ?LOG(info, "CleanSess changed to false.", [], State1),
             emqttd_sm:register_session(ClientId, false, info(State1));
         CleanSess =:= false ->
             ok
@@ -527,9 +536,14 @@ handle_cast({destroy, ClientId},
 handle_cast(Msg, State) ->
     ?UNEXPECTED_MSG(Msg, State).
 
+%% Ignore Messages delivered by self
+handle_info({dispatch, _Topic, #mqtt_message{from = {ClientId, _}}},
+             State = #state{client_id = ClientId, ignore_loop_deliver = true}) ->
+    hibernate(State);
+
 %% Dispatch Message
 handle_info({dispatch, Topic, Msg}, State) when is_record(Msg, mqtt_message) ->
-    {noreply, gc(dispatch(tune_qos(Topic, Msg, State), State)), hibernate};
+    hibernate(gc(dispatch(tune_qos(Topic, reset_dup(Msg), State), State)));
 
 %% Do nothing if the client has been disconnected.
 handle_info({timeout, _Timer, retry_delivery}, State = #state{client_pid = undefined}) ->
@@ -572,9 +586,9 @@ handle_info(Info, Session) ->
     ?UNEXPECTED_INFO(Info, Session).
 
 terminate(Reason, #state{client_id = ClientId, username = Username}) ->
-    emqttd_stats:del_session_stats(ClientId),
+    %% Move to emqttd_sm to avoid race condition
+    %%emqttd_stats:del_session_stats(ClientId),
     emqttd_hooks:run('session.terminated', [ClientId, Username, Reason]),
-    emqttd_server:subscriber_down(ClientId),
     emqttd_sm:unregister_session(ClientId).
 
 code_change(_OldVsn, Session, _Extra) ->
@@ -620,8 +634,10 @@ retry_delivery(Force, [{Type, Msg, Ts} | Msgs], Now,
                     redeliver(Msg, State),
                     Inflight1 = Inflight:update(PacketId, {publish, Msg, Now}),
                     retry_delivery(Force, Msgs, Now, State#state{inflight = Inflight1});
-                {pubrel, PacketId} -> %% remove 'pubrel' directly?
-                    retry_delivery(Force, Msgs, Now, State#state{inflight = Inflight:delete(PacketId)})
+                {pubrel, PacketId} ->
+                    redeliver({pubrel, PacketId}, State),
+                    Inflight1 = Inflight:update(PacketId, {pubrel, PacketId, Now}),
+                    retry_delivery(Force, Msgs, Now, State#state{inflight = Inflight1})
             end;
         true ->
             State#state{retry_timer = start_timer(Interval - Diff, retry_delivery)}
@@ -641,11 +657,13 @@ expire_awaiting_rel(State = #state{awaiting_rel = AwaitingRel}) ->
 expire_awaiting_rel([], _Now, State) ->
     State#state{await_rel_timer = undefined};
 
-expire_awaiting_rel([{PacketId, #mqtt_message{timestamp = TS}} | Msgs],
+expire_awaiting_rel([{PacketId, Msg = #mqtt_message{timestamp = TS}} | Msgs],
                     Now, State = #state{awaiting_rel      = AwaitingRel,
                                         await_rel_timeout = Timeout}) ->
     case (timer:now_diff(Now, TS) div 1000) of
         Diff when Diff >= Timeout ->
+            ?LOG(warning, "Dropped Qos2 Message for await_rel_timeout: ~p", [Msg], State),
+            emqttd_metrics:inc('messages/qos2/dropped'),
             expire_awaiting_rel(Msgs, Now, State#state{awaiting_rel = maps:remove(PacketId, AwaitingRel)});
         Diff ->
             State#state{await_rel_timer = start_timer(Timeout - Diff, check_awaiting_rel)}
@@ -699,14 +717,17 @@ dispatch(Msg = #mqtt_message{qos = QoS},
 
 enqueue_msg(Msg, State = #state{mqueue = Q}) ->
     inc_stats(enqueue_msg),
-    State#state{mqueue = emqttd_mqueue:in(Msg, Q)}.
+    State#state{mqueue = ?MQueue:in(Msg, Q)}.
 
 %%--------------------------------------------------------------------
 %% Deliver
 %%--------------------------------------------------------------------
 
 redeliver(Msg = #mqtt_message{qos = QoS}, State) ->
-    deliver(Msg#mqtt_message{dup = if QoS =:= ?QOS2 -> false; true -> true end}, State).
+    deliver(Msg#mqtt_message{dup = if QoS =:= ?QOS0 -> false; true -> true end}, State);
+
+redeliver({pubrel, PacketId}, #state{client_pid = Pid}) ->
+    Pid ! {redeliver, {?PUBREL, PacketId}}.
 
 deliver(Msg, #state{client_pid = Pid}) ->
     inc_stats(deliver_msg),
@@ -742,7 +763,7 @@ acked(pubrec, PacketId, State = #state{client_id = ClientId,
     case Inflight:lookup(PacketId) of
         {publish, Msg, _Ts} ->
             emqttd_hooks:run('message.acked', [ClientId, Username], Msg),
-            State#state{inflight = Inflight:update(PacketId, {pubrel, PacketId, os:timestamp()})}; 
+            State#state{inflight = Inflight:update(PacketId, {pubrel, PacketId, os:timestamp()})};
         {pubrel, PacketId, _Ts} ->
             ?LOG(warning, "Duplicated PUBREC Packet: ~p", [PacketId], State),
             State
@@ -766,7 +787,7 @@ dequeue(State = #state{inflight = Inflight}) ->
     end.
 
 dequeue2(State = #state{mqueue = Q}) ->
-    case emqttd_mqueue:out(Q) of
+    case ?MQueue:out(Q) of
         {empty, _Q} ->
             State;
         {{value, Msg}, Q1} ->
@@ -790,6 +811,14 @@ tune_qos(Topic, Msg = #mqtt_message{qos = PubQoS},
         error ->
             Msg
     end.
+
+%%--------------------------------------------------------------------
+%% Reset Dup
+%%--------------------------------------------------------------------
+
+reset_dup(Msg = #mqtt_message{dup = true}) ->
+    Msg#mqtt_message{dup = false};
+reset_dup(Msg) -> Msg.
 
 %%--------------------------------------------------------------------
 %% Next Msg Id
@@ -828,4 +857,3 @@ shutdown(Reason, State) ->
 
 gc(State) ->
     emqttd_gc:maybe_force_gc(#state.force_gc_count, State).
-
