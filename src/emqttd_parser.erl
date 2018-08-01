@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2013-2018 EMQ Enterprise, Inc. (http://emqtt.io)
+%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 %% @doc MQTT Packet Parser
 -module(emqttd_parser).
+-compile({parse_transform, lager_transform}).
 
 -author("Feng Lee <feng@emqtt.io>").
 
@@ -39,7 +40,7 @@ initial_state(MaxSize) ->
 
 %% @doc Parse MQTT Packet
 -spec(parse(binary(), {none, pos_integer()} | fun())
-            -> {ok, mqtt_packet()} | {error, term()} | {more, fun()}).
+            -> {ok, mqtt_packet()} | {error, any()} | {more, fun()}).
 parse(<<>>, {none, MaxLen}) ->
     {more, fun(Bin) -> parse(Bin, {none, MaxLen}) end};
 parse(<<Type:4, Dup:1, QoS:2, Retain:1, Rest/binary>>, {none, Limit}) ->
@@ -79,7 +80,7 @@ parse_frame(Bin, #mqtt_packet_header{type = Type, qos  = Qos} = Header, Length) 
         {?CONNECT, <<FrameBin:Length/binary, Rest/binary>>} ->
             {ProtoName, Rest1} = parse_utf(FrameBin),
             %% Fix mosquitto bridge: 0x83, 0x84
-            <<BridgeTag:4, ProtoVersion:4, Rest2/binary>> = Rest1,
+            <<_Bridge:4, ProtoVersion:4, Rest2/binary>> = Rest1,
             <<UsernameFlag : 1,
               PasswordFlag : 1,
               WillRetain   : 1,
@@ -124,7 +125,7 @@ parse_frame(Bin, #mqtt_packet_header{type = Type, qos  = Qos} = Header, Length) 
                                       _ -> <<Id:16/big, R/binary>> = Rest1,
                                           {Id, R}
                                   end,
-            wrap(fixdup(Header), #mqtt_packet_publish{topic_name = TopicName,
+            wrap(Header, #mqtt_packet_publish{topic_name = TopicName,
                                               packet_id = PacketId},
                  Payload, Rest);
         {?PUBACK, <<FrameBin:Length/binary, Rest/binary>>} ->
@@ -222,9 +223,3 @@ fixqos(?SUBSCRIBE, 0)   -> 1;
 fixqos(?UNSUBSCRIBE, 0) -> 1;
 fixqos(_Type, QoS)      -> QoS.
 
-%% Fix Issue#1319
-fixdup(Header = #mqtt_packet_header{qos = ?QOS0, dup = true}) ->
-    Header#mqtt_packet_header{dup = false};
-fixdup(Header = #mqtt_packet_header{qos = ?QOS2, dup = true}) ->
-    Header#mqtt_packet_header{dup = false};
-fixdup(Header) -> Header.

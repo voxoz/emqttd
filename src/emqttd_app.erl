@@ -41,8 +41,7 @@ start(_Type, _Args) ->
     lager:set_loglevel(lager_console_backend, error),
     print_banner(),
     kvs:join(),
-    ekka:start(),
-%   emqttd_mnesia:start(),
+    emqttd_mnesia:start(),
     {ok, Sup} = emqttd_sup:start_link(),
     [ begin _ = erlang:apply(X,Y,Z),
             io:format("~p:~p: ~p~n",[X,Y,ok]) end
@@ -51,9 +50,8 @@ start(_Type, _Args) ->
                            {?MODULE,register_acl_mod,[]},
                            {emqttd_plugins,init,[]},
 %                           {emqttd_plugins,load,[]},
-%                           {?MODULE,start_listeners,[]},
+                           {?MODULE,start_listeners,[]},
                            {register,[emqttd, self()]}] ],
-    start_autocluster(),
     print_vsn(),
     {ok, Sup}.
 
@@ -152,20 +150,6 @@ register_acl_mod() ->
         {ok, File} -> emqttd_access_control:register_mod(acl, emqttd_acl_internal, [File]);
         undefined  -> ok
     end.
-
-%%--------------------------------------------------------------------
-%% Autocluster
-%%--------------------------------------------------------------------
-
-start_autocluster() ->
-    ekka:callback(prepare, fun emqttd:shutdown/1),
-    ekka:callback(reboot,  fun emqttd:reboot/0),
-    ekka:autocluster(?APP, fun after_autocluster/0).
-
-after_autocluster() ->
-    emqttd_plugins:init(),
-    emqttd_plugins:load(),
-    start_listeners().
 
 %%--------------------------------------------------------------------
 %% Start Listeners

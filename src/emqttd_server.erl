@@ -137,7 +137,7 @@ subscriptions(Subscriber) ->
                 subscription(Topic, Subscriber);
                  ({mqtt_subscription,_, Topic}) ->
                 subscription(Topic, Subscriber)
-        end,  ekka_mnesia:ensure_ok(ekka_mnesia:wait_for(tables)),ets:lookup(mqtt_subscription, Subscriber)).
+        end, ets:lookup(mqtt_subscription, Subscriber)).
 
 subscription(Topic, Subscriber) ->
     {Topic, Subscriber, ets:lookup_element(mqtt_subproperty, {Topic, Subscriber}, 3)}.
@@ -187,7 +187,6 @@ handle_call({unsubscribe, Topic, Subscriber}, _From, State) ->
 
 handle_call({setqos, Topic, Subscriber, Qos}, _From, State) ->
     Key = {Topic, Subscriber},
-    ekka_mnesia:ensure_ok(ekka_mnesia:wait_for(tables)),
     case ets:lookup(mqtt_subproperty, Key) of
         [{mqtt_subproperty, _, Opts}] ->
             Opts1 = lists:ukeymerge(1, [{qos, Qos}], Opts),
@@ -238,9 +237,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 
 do_subscribe_(Topic, Subscriber, Options, State) ->
-    case ekka_mnesia:wait_for(start) of ok -> ekka_mnesia:ensure_ok(ekka_mnesia:wait_for(tables)) ;
-                                        _  -> timer:sleep(1000), ekka_mnesia:wait_for(start) end,
-    try case ets:lookup(mqtt_subproperty, {Topic, Subscriber}) of
+    case ets:lookup(mqtt_subproperty, {Topic, Subscriber}) of
         [] ->
             emqttd_pubsub:async_subscribe(Topic, Subscriber, Options),
             Share = proplists:get_value(share, Options),
@@ -249,17 +246,13 @@ do_subscribe_(Topic, Subscriber, Options, State) ->
             kvs:put({mqtt_subproperty, {Topic, Subscriber}, Options}),
             {ok, monitor_subpid(Subscriber, State)};
         [_] ->
-            {error, {already_subscribed, Topic}} end
-    catch E:R -> lager:warning("mqtt_subproperty is not ready: ~s", [R]),
-                 {error, E}
+            {error, {already_subscribed, Topic}}
     end.
 
 add_subscription_(undefined, Subscriber, Topic) ->
-    ekka_mnesia:ensure_ok(ekka_mnesia:wait_for(tables)),
     kvs:put({mqtt_subscription, Subscriber, Topic});
 %    ets:insert(mqtt_subscription, {Subscriber, Topic});
 add_subscription_(Share, Subscriber, Topic) ->
-    ekka_mnesia:ensure_ok(ekka_mnesia:wait_for(tables)),
     kvs:put({mqtt_subscription, Subscriber, {Share, Topic}}).
 %    ets:insert(mqtt_subscription, {Subscriber, {Share, Topic}}).
 

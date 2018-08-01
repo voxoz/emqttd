@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2013-2018 EMQ Enterprise, Inc. (http://emqtt.io)
+%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 %%--------------------------------------------------------------------
 
 -module(emqttd_sm).
+-compile({parse_transform, lager_transform}).
 
 -author("Feng Lee <feng@emqtt.io>").
 
@@ -33,8 +34,7 @@
 %% API Function Exports
 -export([start_link/2]).
 
--export([start_session/2, lookup_session/1, register_session/3,
-         unregister_session/1, unregister_session/2]).
+-export([start_session/2, lookup_session/1, register_session/3, unregister_session/1]).
 
 -export([dispatch/3]).
 
@@ -62,26 +62,26 @@
 
 mnesia(boot) ->
     %% Global Session Table
-    ok = ekka_mnesia:create_table(mqtt_session, [
+    ok = emqttd_mnesia:create_table(mqtt_session, [
                 {type, set},
                 {ram_copies, [node()]},
                 {record_name, mqtt_session},
                 {attributes, record_info(fields, mqtt_session)}]);
 
 mnesia(copy) ->
-    ok = ekka_mnesia:copy_table(mqtt_session).
+    ok = emqttd_mnesia:copy_table(mqtt_session).
 
 %%--------------------------------------------------------------------
 %% API
 %%--------------------------------------------------------------------
 
 %% @doc Start a session manager
--spec(start_link(atom(), pos_integer()) -> {ok, pid()} | ignore | {error, term()}).
+-spec(start_link(atom(), pos_integer()) -> {ok, pid()} | ignore | {error, any()}).
 start_link(Pool, Id) ->
     gen_server2:start_link({local, ?PROC_NAME(?MODULE, Id)}, ?MODULE, [Pool, Id], []).
 
 %% @doc Start a session
--spec(start_session(boolean(), {binary(), binary() | undefined}) -> {ok, pid(), boolean()} | {error, term()}).
+-spec(start_session(boolean(), {binary(), binary() | undefined}) -> {ok, pid(), boolean()} | {error, any()}).
 start_session(CleanSess, {ClientId, Username}) ->
     SM = gproc_pool:pick_worker(?POOL, ClientId),
     call(SM, {start_session, CleanSess, {ClientId, Username}, self()}).
@@ -100,18 +100,9 @@ register_session(ClientId, CleanSess, Properties) ->
     ets:insert(mqtt_local_session, {ClientId, self(), CleanSess, Properties}).
 
 %% @doc Unregister a session.
--spec(unregister_session(binary()) -> boolean()).
+-spec(unregister_session(binary()) -> true).
 unregister_session(ClientId) ->
-    unregister_session(ClientId, self()).
-
-unregister_session(ClientId, Pid) ->
-    case ets:lookup(mqtt_local_session, ClientId) of
-        [LocalSess = {_, Pid, _, _}] ->
-            emqttd_stats:del_session_stats(ClientId),
-            ets:delete_object(mqtt_local_session, LocalSess);
-        _ ->
-            false
-    end.
+    ets:delete(mqtt_local_session, ClientId).
 
 dispatch(ClientId, Topic, Msg) ->
     try ets:lookup_element(mqtt_local_session, ClientId, 2) of
@@ -156,7 +147,7 @@ handle_call({start_session, false, {ClientId, Username}, ClientPid}, _From, Stat
                     {reply, {ok, SessPid, true}, State};
                 {error, Erorr} ->
                     {reply, {error, Erorr}, State}
-            end
+             end
     end;
 
 %% Transient Session
@@ -183,16 +174,18 @@ handle_cast(Msg, State) ->
 handle_info({'DOWN', MRef, process, DownPid, _Reason}, State) ->
     case dict:find(MRef, State#state.monitors) of
         {ok, ClientId} ->
-            NewState =
-              case mnesia:dirty_read({mqtt_session, ClientId}) of
-                  [] -> State;
-                  [Sess = #mqtt_session{sess_pid = DownPid}] ->
-                      mnesia:dirty_delete_object(Sess),
-                      erase_monitor(MRef, State);
-                  [_Sess] ->
-                      State
-              end,
-            {noreply, NewState, hibernate};
+            mnesia:transaction(fun() ->
+                case mnesia:wread({mqtt_session, ClientId}) of
+                    [] ->
+                        ok;
+                    [Sess = #mqtt_session{sess_pid = DownPid}] ->
+                        emqttd_stats:del_session_stats(ClientId),
+                        mnesia:delete_object(mqtt_session, Sess, write);
+                    [_Sess] ->
+                        ok
+                    end
+                end),
+            {noreply, erase_monitor(MRef, State), hibernate};
         error ->
             lager:error("MRef of session ~p not found", [DownPid]),
             {noreply, State}
@@ -215,7 +208,8 @@ code_change(_OldVsn, State, _Extra) ->
 create_session({CleanSess, {ClientId, Username}, ClientPid}, State) ->
     case create_session(CleanSess, {ClientId, Username}, ClientPid) of
         {ok, SessPid} ->
-            {reply, {ok, SessPid, false}, monitor_session(ClientId, SessPid, State)};
+            {reply, {ok, SessPid, false},
+                monitor_session(ClientId, SessPid, State)};
         {error, Error} ->
             {reply, {error, Error}, State}
     end.
@@ -257,7 +251,6 @@ resume_session(Session = #mqtt_session{client_id = ClientId, sess_pid = SessPid}
             {ok, SessPid};
         false ->
             ?LOG(error, "Cannot resume ~p which seems already dead!", [SessPid], Session),
-            remove_session(Session),
             {error, session_died}
     end;
 
@@ -283,14 +276,15 @@ destroy_session(Session = #mqtt_session{client_id = ClientId, sess_pid  = SessPi
     remove_session(Session);
 
 %% Remote node
-destroy_session(Session = #mqtt_session{client_id = ClientId, sess_pid  = SessPid}) ->
+destroy_session(Session = #mqtt_session{client_id = ClientId,
+                                        sess_pid  = SessPid}) ->
     Node = node(SessPid),
     case rpc:call(Node, emqttd_session, destroy, [SessPid, ClientId]) of
         ok ->
             remove_session(Session);
         {badrpc, nodedown} ->
             ?LOG(error, "Node '~s' down", [Node], Session),
-            remove_session(Session);
+            remove_session(Session); 
         {badrpc, Reason} ->
             ?LOG(error, "Failed to destory ~p on remote node ~p for ~s",
                  [SessPid, Node, Reason], Session),
@@ -298,12 +292,15 @@ destroy_session(Session = #mqtt_session{client_id = ClientId, sess_pid  = SessPi
      end.
 
 remove_session(Session) ->
-    mnesia:dirty_delete_object(Session).
+    case mnesia:transaction(fun mnesia:delete_object/1, [Session]) of
+        {atomic, ok}     -> ok;
+        {aborted, Error} -> {error, Error}
+    end.
 
 monitor_session(ClientId, SessPid, State = #state{monitors = Monitors}) ->
     MRef = erlang:monitor(process, SessPid),
     State#state{monitors = dict:store(MRef, ClientId, Monitors)}.
 
 erase_monitor(MRef, State = #state{monitors = Monitors}) ->
-    erlang:demonitor(MRef, [flush]),
     State#state{monitors = dict:erase(MRef, Monitors)}.
+

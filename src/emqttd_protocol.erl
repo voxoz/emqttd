@@ -326,10 +326,10 @@ send(Packet = ?PACKET(Type),
     {ok, State#proto_state{stats_data = Stats1}}.
 
 trace(recv, Packet, ProtoState) ->
-    ?LOG(debug, "RECV ~s", [emqttd_packet:format(Packet)], ProtoState);
+    ?LOG(info, "RECV ~s", [emqttd_packet:format(Packet)], ProtoState);
 
 trace(send, Packet, ProtoState) ->
-    ?LOG(debug, "SEND ~s", [emqttd_packet:format(Packet)], ProtoState).
+    ?LOG(info, "SEND ~s", [emqttd_packet:format(Packet)], ProtoState).
 
 inc_stats(_Direct, _Type, Stats = #proto_stats{enable_stats = false}) ->
     Stats;

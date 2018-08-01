@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2013-2018 EMQ Enterprise, Inc. (http://emqtt.io)
+%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -58,23 +58,21 @@
 
 -define(HIGH_WM, 0.6).
 
--define(PQUEUE, priority_queue).
-
 -type(priority() :: {iolist(), pos_integer()}).
 
 -type(option() :: {type, simple | priority}
-                | {max_length, non_neg_integer()} %% Max queue length
+                | {max_length, pos_integer() | infinity}
                 | {priority, list(priority())}
                 | {low_watermark, float()}  %% Low watermark
                 | {high_watermark, float()} %% High watermark
-                | {store_qos0, boolean()}). %% Queue Qos0?
+                | {queue_qos0, boolean()}). %% Queue Qos0?
 
--type(stat() :: {max_len, non_neg_integer()}
+-type(stat() :: {max_len, infinity | pos_integer()}
               | {len, non_neg_integer()}
               | {dropped, non_neg_integer()}).
 
 -record(mqueue, {type :: simple | priority,
-                 name, q :: queue:queue() | ?PQUEUE:q(),
+                 name, q :: queue:queue() | priority_queue:q(),
                  %% priority table
                  pseq = 0, priorities = [],
                  %% len of simple queue
@@ -96,14 +94,14 @@ new(Name, Opts, AlarmFun) ->
                    len = 0, max_len = MaxLen,
                    low_wm = low_wm(MaxLen, Opts),
                    high_wm = high_wm(MaxLen, Opts),
-                   qos0 = get_value(store_qos0, Opts, false),
+                   qos0 = get_value(queue_qos0, Opts, false),
                    alarm_fun = AlarmFun}, Opts).
 
 init_q(MQ = #mqueue{type = simple}, _Opts) ->
     MQ#mqueue{q = queue:new()};
 init_q(MQ = #mqueue{type = priority}, Opts) ->
     Priorities = get_value(priority, Opts, []),
-    init_p(Priorities, MQ#mqueue{q = ?PQUEUE:new()}).
+    init_p(Priorities, MQ#mqueue{q = priority_queue:new()}).
 
 init_p([], MQ) ->
     MQ;
@@ -134,12 +132,12 @@ type(#mqueue{type = Type}) ->
     Type.
 
 is_empty(#mqueue{type = simple, len = Len}) -> Len =:= 0;
-is_empty(#mqueue{type = priority, q = Q})   -> ?PQUEUE:is_empty(Q).
+is_empty(#mqueue{type = priority, q = Q})   -> priority_queue:is_empty(Q).
 
 len(#mqueue{type = simple, len = Len}) -> Len;
-len(#mqueue{type = priority, q = Q})   -> ?PQUEUE:len(Q).
+len(#mqueue{type = priority, q = Q})   -> priority_queue:len(Q).
 
-max_len(#mqueue{max_len = MaxLen}) -> MaxLen.
+max_len(#mqueue{max_len= MaxLen}) -> MaxLen.
 
 %% @doc Dropped of the mqueue
 -spec(dropped(mqueue()) -> non_neg_integer()).
@@ -150,7 +148,7 @@ dropped(#mqueue{dropped = Dropped}) -> Dropped.
 stats(#mqueue{type = Type, q = Q, max_len = MaxLen, len = Len, dropped = Dropped}) ->
     [{len, case Type of
                 simple   -> Len;
-                priority -> ?PQUEUE:len(Q)
+                priority -> priority_queue:len(Q)
             end} | [{max_len, MaxLen}, {dropped, Dropped}]].
 
 %% @doc Enqueue a message.
@@ -171,26 +169,26 @@ in(Msg = #mqtt_message{topic = Topic}, MQ = #mqueue{type = priority, q = Q,
                                                     max_len = infinity}) ->
     case lists:keysearch(Topic, 1, Priorities) of
         {value, {_, Pri}} ->
-            MQ#mqueue{q = ?PQUEUE:in(Msg, Pri, Q)};
+            MQ#mqueue{q = priority_queue:in(Msg, Pri, Q)};
         false ->
             {Pri, MQ1} = insert_p(Topic, 0, MQ),
-            MQ1#mqueue{q = ?PQUEUE:in(Msg, Pri, Q)}
+            MQ1#mqueue{q = priority_queue:in(Msg, Pri, Q)}
     end;
 in(Msg = #mqtt_message{topic = Topic}, MQ = #mqueue{type = priority, q = Q,
                                                     priorities = Priorities,
                                                     max_len = MaxLen}) ->
     case lists:keysearch(Topic, 1, Priorities) of
         {value, {_, Pri}} ->
-            case ?PQUEUE:plen(Pri, Q) >= MaxLen of
+            case priority_queue:plen(Pri, Q) >= MaxLen of
                 true ->
-                    {_, Q1} = ?PQUEUE:out(Pri, Q),
-                    MQ#mqueue{q = ?PQUEUE:in(Msg, Pri, Q1)};
+                    {_, Q1} = priority_queue:out(Pri, Q),
+                    MQ#mqueue{q = priority_queue:in(Msg, Pri, Q1)};
                 false ->
-                    MQ#mqueue{q = ?PQUEUE:in(Msg, Pri, Q)}
+                    MQ#mqueue{q = priority_queue:in(Msg, Pri, Q)}
             end;
         false ->
             {Pri, MQ1} = insert_p(Topic, 0, MQ),
-            MQ1#mqueue{q = ?PQUEUE:in(Msg, Pri, Q)}
+            MQ1#mqueue{q = priority_queue:in(Msg, Pri, Q)}
     end.
 
 out(MQ = #mqueue{type = simple, len = 0}) ->
@@ -202,11 +200,9 @@ out(MQ = #mqueue{type = simple, q = Q, len = Len}) ->
     {R, Q2} = queue:out(Q),
     {R, maybe_clear_alarm(MQ#mqueue{q = Q2, len = Len - 1})};
 out(MQ = #mqueue{type = priority, q = Q}) ->
-    {R, Q2} = ?PQUEUE:out(Q),
+    {R, Q2} = priority_queue:out(Q),
     {R, MQ#mqueue{q = Q2}}.
 
-maybe_set_alarm(MQ = #mqueue{high_wm = undefined}) ->
-    MQ;
 maybe_set_alarm(MQ = #mqueue{name = Name, len = Len, high_wm = HighWM, alarm_fun = AlarmFun})
     when Len > HighWM ->
     Alarm = #mqtt_alarm{id = iolist_to_binary(["queue_high_watermark.", Name]),
@@ -217,8 +213,6 @@ maybe_set_alarm(MQ = #mqueue{name = Name, len = Len, high_wm = HighWM, alarm_fun
 maybe_set_alarm(MQ) ->
     MQ.
 
-maybe_clear_alarm(MQ = #mqueue{low_wm = undefined}) ->
-    MQ;
 maybe_clear_alarm(MQ = #mqueue{name = Name, len = Len, low_wm = LowWM, alarm_fun = AlarmFun})
     when Len < LowWM ->
     MQ#mqueue{alarm_fun = AlarmFun(clear, list_to_binary(["queue_high_watermark.", Name]))};

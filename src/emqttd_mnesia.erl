@@ -46,7 +46,6 @@ start() ->
     init_tables(),
     wait_for(tables).
 
-
 %% @private
 ensure_data_dir() ->
     Dir = mnesia:system_info(directory) ++ "/",

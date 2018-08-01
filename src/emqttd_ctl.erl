@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2013-2018 EMQ Enterprise, Inc. (http://emqtt.io)
+%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 %%--------------------------------------------------------------------
 
 -module(emqttd_ctl).
+-compile({parse_transform, lager_transform}).
 
 -behaviour(gen_server).
 
@@ -64,33 +65,14 @@ cast(Msg) -> gen_server:cast(?SERVER, Msg).
 
 %% @doc Run a command
 -spec(run([string()]) -> any()).
-run([]) -> usage(), ok;
+run([]) -> usage();
 
-run(["help"]) -> usage(), ok;
-
-run(["set"] = CmdS) when length(CmdS) =:= 1 ->
-    emqttd_cli_config:set_usage(), ok;
-
-run(["set" | _] = CmdS) ->
-    emqttd_cli_config:run(["config" | CmdS]), ok;
-
-run(["show" | _] = CmdS) ->
-    emqttd_cli_config:run(["config" | CmdS]), ok;
+run(["help"]) -> usage();
 
 run([CmdS|Args]) ->
     case lookup(list_to_atom(CmdS)) of
-        [{Mod, Fun}] ->
-            try Mod:Fun(Args) of
-               _ -> ok
-            catch
-                _:Reason ->
-                    io:format("Reason:~p, get_stacktrace:~p~n",
-                              [Reason, erlang:get_stacktrace()]),
-                    {error, Reason}
-            end;
-        [] ->
-            usage(),
-            {error, cmd_not_found}
+        [{Mod, Fun}] -> Mod:Fun(Args);
+        [] -> usage() 
     end.
 
 %% @doc Lookup a command
