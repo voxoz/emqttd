@@ -433,9 +433,9 @@ handle_cast({puback, PacketId}, State = #state{inflight = Inflight}) ->
      end, hibernate};
 
 %% PUBREC:
-handle_cast({pubrec, PacketId}, State = #state{inflight = Inflight}) ->
+handle_cast({pubrec, PacketId}, State = #state{inflight = {Inflight,A}}) ->
     {noreply,
-     case Inflight:contain(PacketId) of
+     case Inflight:contain(PacketId,{Inflight,A}) of
          true ->
              acked(pubrec, PacketId, State);
          false ->
@@ -459,14 +459,14 @@ handle_cast({pubrel, PacketId}, State = #state{awaiting_rel = AwaitingRel}) ->
      end, hibernate};
 
 %% PUBCOMP:
-handle_cast({pubcomp, PacketId}, State = #state{inflight = Inflight}) ->
+handle_cast({pubcomp, PacketId}, State = #state{inflight = {Inflight,A}}) ->
     {noreply,
-     case Inflight:contain(PacketId) of
+     case Inflight:contain(PacketId, {Inflight,A}) of
          true ->
              dequeue(acked(pubcomp, PacketId, State));
          false ->
              ?LOG(warning, "The PUBCOMP ~p is not inflight: ~p",
-                  [PacketId, Inflight:window()], State),
+                  [PacketId, Inflight:window({Inflight,A})], State),
              emqttd_metrics:inc('packets/pubcomp/missed'),
              State
      end, hibernate};
@@ -599,10 +599,10 @@ kick(ClientId, OldPid, Pid) ->
 
 %% Redeliver at once if Force is true
 
-retry_delivery(Force, State = #state{inflight = Inflight}) ->
-    case Inflight:is_empty() of
+retry_delivery(Force, State = #state{inflight = {Inflight,A}}) ->
+    case Inflight:is_empty({Inflight,A}) of
         true  -> State;
-        false -> Msgs = lists:sort(sortfun(inflight), Inflight:values()),
+        false -> Msgs = lists:sort(sortfun(inflight), Inflight:values({Inflight,A})),
                  retry_delivery(Force, Msgs, os:timestamp(), State)
     end.
 
@@ -686,9 +686,9 @@ dispatch(Msg = #mqtt_message{qos = ?QOS0}, State) ->
     deliver(Msg, State), State;
 
 dispatch(Msg = #mqtt_message{qos = QoS},
-         State = #state{next_msg_id = MsgId, inflight = Inflight})
+         State = #state{next_msg_id = MsgId, inflight = {Inflight,A}})
     when QoS =:= ?QOS1 orelse QoS =:= ?QOS2 ->
-    case Inflight:is_full() of
+    case Inflight:is_full({Inflight,A}) of
         true  ->
             enqueue_msg(Msg, State);
         false ->
@@ -717,12 +717,12 @@ deliver(Msg, #state{client_pid = Pid}) ->
 %%--------------------------------------------------------------------
 
 await(Msg = #mqtt_message{pktid = PacketId},
-      State = #state{inflight       = Inflight,
+      State = #state{inflight       = {Inflight,A},
                      retry_timer    = RetryTimer,
                      retry_interval = Interval}) ->
     %% Start retry timer if the Inflight is still empty
     State1 = ?IF(RetryTimer == undefined, State#state{retry_timer = start_timer(Interval, retry_delivery)}, State),
-    State1#state{inflight = Inflight:insert(PacketId, {publish, Msg, os:timestamp()})}.
+    State1#state{inflight = Inflight:insert(PacketId, {publish, Msg, os:timestamp()}, {Inflight,A})}.
 
 acked(puback, PacketId, State = #state{client_id = ClientId,
                                        username  = Username,
@@ -738,18 +738,18 @@ acked(puback, PacketId, State = #state{client_id = ClientId,
 
 acked(pubrec, PacketId, State = #state{client_id = ClientId,
                                        username  = Username,
-                                       inflight  = Inflight}) ->
-    case Inflight:lookup(PacketId) of
+                                       inflight  = {Inflight,A}}) ->
+    case Inflight:lookup(PacketId,{Inflight,A}) of
         {publish, Msg, _Ts} ->
             emqttd_hooks:run('message.acked', [ClientId, Username], Msg),
-            State#state{inflight = Inflight:update(PacketId, {pubrel, PacketId, os:timestamp()})}; 
+            State#state{inflight = Inflight:update(PacketId, {pubrel, PacketId, os:timestamp()}, {Inflight,A})}; 
         {pubrel, PacketId, _Ts} ->
             ?LOG(warning, "Duplicated PUBREC Packet: ~p", [PacketId], State),
             State
     end;
 
-acked(pubcomp, PacketId, State = #state{inflight = Inflight}) ->
-    State#state{inflight = Inflight:delete(PacketId)}.
+acked(pubcomp, PacketId, State = #state{inflight = {Inflight,A}}) ->
+    State#state{inflight = Inflight:delete(PacketId, {Inflight,A})}.
 
 %%--------------------------------------------------------------------
 %% Dequeue
@@ -759,8 +759,8 @@ acked(pubcomp, PacketId, State = #state{inflight = Inflight}) ->
 dequeue(State = #state{client_pid = undefined}) ->
     State;
 
-dequeue(State = #state{inflight = Inflight}) ->
-    case Inflight:is_full() of
+dequeue(State = #state{inflight = {Inflight,A}}) ->
+    case Inflight:is_full({Inflight,A}) of
         true  -> State;
         false -> dequeue2(State)
     end.
