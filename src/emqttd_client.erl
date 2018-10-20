@@ -97,20 +97,21 @@ session(CPid) ->
 %% gen_server Callbacks
 %%--------------------------------------------------------------------
 
-init([Conn0, Env]) ->
-    {ok, Conn} = Conn0:wait(),
-    case Conn:peername() of
+init([{C0,_} = Conn0, Env]) ->
+    {ok, Conn} = C0:wait(Conn0),
+    {C,_} = Conn,
+    case C:peername(Conn) of
         {ok, Peername}    -> do_init(Conn, Env, Peername);
-        {error, enotconn} -> Conn:fast_close(),
+        {error, enotconn} -> C:fast_close(Conn),
                              exit(normal);
-        {error, Reason}   -> Conn:fast_close(),
+        {error, Reason}   -> C:fast_close(Conn),
                              exit({shutdown, Reason})
     end.
 
-do_init(Conn, Env, Peername) ->
+do_init({C,_} = Conn, Env, Peername) ->
     %% Send Fun
     SendFun = send_fun(Conn, Peername),
-    RateLimit = get_value(rate_limit, Conn:opts()),
+    RateLimit = get_value(rate_limit, C:opts(Conn)),
     PacketSize = get_value(max_packet_size, Env, ?MAX_PACKET_SIZE),
     Parser = emqttd_parser:initial_state(PacketSize),
     ProtoState = emqttd_protocol:init(Peername, SendFun, Env),
@@ -130,13 +131,13 @@ do_init(Conn, Env, Peername) ->
     gen_server2:enter_loop(?MODULE, [], State, self(), IdleTimout,
                            {backoff, 2000, 2000, 20000}).
 
-send_fun(Conn, Peername) ->
+send_fun({C,_} = Conn, Peername) ->
     Self = self(),
     fun(Packet) ->
         Data = emqttd_serializer:serialize(Packet),
         ?LOG(debug, "SEND ~p", [Data], #client_state{peername = Peername}),
         emqttd_metrics:inc('bytes/sent', iolist_size(Data)),
-        try Conn:async_send(Data) of
+        try C:async_send(Data,Conn) of
             true -> ok
         catch
             error:Error -> Self ! {shutdown, Error}
@@ -248,7 +249,8 @@ handle_info({inet_reply, _Sock, {error, Reason}}, State) ->
 handle_info({keepalive, start, Interval}, State = #client_state{connection = Conn}) ->
     ?LOG(debug, "Keepalive at the interval of ~p", [Interval], State),
     StatFun = fun() ->
-                case Conn:getstat([recv_oct]) of
+                {C,_} = Conn,
+                case C:getstat([recv_oct],Conn) of
                     {ok, [{recv_oct, RecvOct}]} -> {ok, RecvOct};
                     {error, Error}              -> {error, Error}
                 end
@@ -279,7 +281,7 @@ handle_info(Info, State) ->
 terminate(Reason, #client_state{connection  = Conn,
                                 keepalive   = KeepAlive,
                                 proto_state = ProtoState}) ->
-    Conn:fast_close(),
+    {C,_} = Conn, C:fast_close(Conn),
     emqttd_keepalive:cancel(KeepAlive),
     case {ProtoState, Reason} of
         {undefined, _} ->
@@ -347,7 +349,7 @@ run_socket(State = #client_state{conn_state = blocked}) ->
 run_socket(State = #client_state{await_recv = true}) ->
     State;
 run_socket(State = #client_state{connection = Conn}) ->
-    Conn:async_recv(0, infinity),
+    {C,_} = Conn, C:async_recv(0, infinity, Conn),
     State#client_state{await_recv = true}.
 
 with_proto(Fun, State = #client_state{proto_state = ProtoState}) ->
@@ -367,7 +369,8 @@ emit_stats(ClientId, State) ->
     State.
 
 sock_stats(#client_state{connection = Conn}) ->
-    case Conn:getstat(?SOCK_STATS) of {ok, Ss} -> Ss; {error, _} -> [] end.
+    {C,_} = Conn,
+    case C:getstat(?SOCK_STATS, Conn) of {ok, Ss} -> Ss; {error, _} -> [] end.
 
 reply(Reply, State) ->
     {reply, Reply, State, hibernate}.
@@ -379,6 +382,7 @@ stop(Reason, State) ->
     {stop, Reason, State}.
 
 gc(State = #client_state{connection = Conn}) ->
-    Cb = fun() -> Conn:gc() end,
+    {C,_} = Conn,
+    Cb = fun() -> C:gc(Conn) end,
     emqttd_gc:maybe_force_gc(#client_state.force_gc_count, State, Cb).
 

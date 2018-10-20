@@ -87,13 +87,13 @@ session(CPid) ->
 %% gen_server Callbacks
 %%--------------------------------------------------------------------
 
-init([Env, WsPid, Req, ReplyChannel]) ->
+init([Env, WsPid, {R,_} = Req, ReplyChannel]) ->
     process_flag(trap_exit, true),
     true = link(WsPid),
-    {ok, Peername} = Req:get(peername),
+    {ok, Peername} = R:get(peername, Req),
     Headers = mochiweb_headers:to_list(
                 mochiweb_request:get(headers, Req)),
-    Conn = Req:get(connection),
+    Conn = R:get(connection, Req),
     ProtoState = emqttd_protocol:init(Peername, send_fun(ReplyChannel),
                                       [{ws_initial_headers, Headers} | Env]),
     IdleTimeout = get_value(client_idle_timeout, Env, 30000),
@@ -261,9 +261,9 @@ send_fun(ReplyChannel) ->
         ReplyChannel({binary, Data})
     end.
 
-stat_fun(Conn) ->
+stat_fun({C,_} = Conn) ->
     fun() ->
-        case Conn:getstat([recv_oct]) of
+        case C:getstat([recv_oct], Conn) of
             {ok, [{recv_oct, RecvOct}]} -> {ok, RecvOct};
             {error, Error}              -> {error, Error}
         end
@@ -282,7 +282,8 @@ emit_stats(ClientId, State) ->
     State.
 
 wsock_stats(#wsclient_state{connection = Conn}) ->
-    case Conn:getstat(?SOCK_STATS) of
+    {C,_} = Conn,
+    case C:getstat(?SOCK_STATS, Conn) of
         {ok,   Ss} -> Ss;
         {error, _} -> []
     end.

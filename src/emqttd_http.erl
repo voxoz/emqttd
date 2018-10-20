@@ -30,9 +30,10 @@
 -export([handle_request/1]).
 
 handle_request(Req) ->
-    handle_request(Req:get(method), Req:get(path), Req).
+    {R,_} = Req,
+    handle_request(R:get(method,Req), R:get(path,Req), Req).
 
-handle_request(Method, "/status", Req) when Method =:= 'HEAD'; Method =:= 'GET' ->
+handle_request(Method, "/status", {R,_} = Req) when Method =:= 'HEAD'; Method =:= 'GET' ->
     {InternalStatus, _ProvidedStatus} = init:get_status(),
     AppStatus =
     case lists:keysearch(emqttd, 1, application:which_applications()) of
@@ -41,35 +42,35 @@ handle_request(Method, "/status", Req) when Method =:= 'HEAD'; Method =:= 'GET' 
     end,
     Status = io_lib:format("Node ~s is ~s~nemqttd is ~s",
                             [node(), InternalStatus, AppStatus]),
-    Req:ok({"text/plain", iolist_to_binary(Status)});
+    R:ok({"text/plain", iolist_to_binary(Status)}, Req);
 
 %%--------------------------------------------------------------------
 %% HTTP Publish API
 %%--------------------------------------------------------------------
 
-handle_request('POST', "/mqtt/publish", Req) ->
+handle_request('POST', "/mqtt/publish", {R,_} = Req) ->
     case authorized(Req) of
         true  -> http_publish(Req);
-        false -> Req:respond({401, [], <<"Unauthorized">>})
+        false -> R:respond({401, [], <<"Unauthorized">>}, Req)
     end;
 
 %%--------------------------------------------------------------------
 %% MQTT Over WebSocket
 %%--------------------------------------------------------------------
 
-handle_request('GET', "/mqtt", Req) ->
-    lager:info("WebSocket Connection from: ~s", [Req:get(peer)]),
-    Upgrade = Req:get_header_value("Upgrade"),
-    Proto   = Req:get_header_value("Sec-WebSocket-Protocol"),
+handle_request('GET', "/mqtt", {R,_} = Req) ->
+    lager:info("WebSocket Connection from: ~s", [R:get(peer, Req)]),
+    Upgrade = R:get_header_value("Upgrade", Req),
+    Proto   = R:get_header_value("Sec-WebSocket-Protocol", Req),
     case {is_websocket(Upgrade), Proto} of
         {true, "mqtt" ++ _Vsn} ->
             emqttd_ws:handle_request(Req);
         {false, _} ->
             lager:error("Not WebSocket: Upgrade = ~s", [Upgrade]),
-            Req:respond({400, [], <<"Bad Request">>});
+            R:respond({400, [], <<"Bad Request">>}, Req);
         {_, Proto} ->
             lager:error("WebSocket with error Protocol: ~s", [Proto]),
-            Req:respond({400, [], <<"Bad WebSocket Protocol">>})
+            R:respond({400, [], <<"Bad WebSocket Protocol">>}, Req)
     end;
 
 %%--------------------------------------------------------------------
@@ -80,15 +81,15 @@ handle_request('GET', "/" ++ File, Req) ->
     lager:info("HTTP GET File: ~s", [File]),
     mochiweb_request:serve_file(File, docroot(), Req);
 
-handle_request(Method, Path, Req) ->
+handle_request(Method, Path, {R,_} = Req) ->
     lager:error("Unexpected HTTP Request: ~s ~s", [Method, Path]),
-    Req:not_found().
+    R:not_found(Req).
 
 %%--------------------------------------------------------------------
 %% HTTP Publish
 %%--------------------------------------------------------------------
 
-http_publish(Req) ->
+http_publish({R,_} = Req) ->
     Params = mochiweb_request:parse_post(Req),
     lager:info("HTTP Publish: ~p", [Params]),
     Topics   = topics(Params),
@@ -102,11 +103,11 @@ http_publish(Req) ->
                 Msg = emqttd_message:make(ClientId, Qos, Topic, Payload),
                 emqttd:publish(Msg#mqtt_message{retain  = Retain})
             end, Topics),
-            Req:ok({"text/plain", <<"OK">>});
+            R:ok({"text/plain", <<"OK">>}, Req);
        {false, _} ->
-            Req:respond({400, [], <<"Bad QoS">>});
+            R:respond({400, [], <<"Bad QoS">>}, Req);
         {_, false} ->
-            Req:respond({400, [], <<"Bad Topics">>})
+            R:respond({400, [], <<"Bad Topics">>}, Req)
     end.
 
 topics(Params) ->
@@ -131,13 +132,13 @@ validate(topic, Topic) ->
 %% basic authorization
 %%--------------------------------------------------------------------
 
-authorized(Req) ->
-    case Req:get_header_value("Authorization") of
+authorized({R,_} = Req) ->
+    case R:get_header_value("Authorization", Req) of
     undefined ->
         false;
     "Basic " ++ BasicAuth ->
         {Username, Password} = user_passwd(BasicAuth),
-        {ok, Peer} = Req:get(peername),
+        {ok, Peer} = R:get(peername, Req),
         case emqttd_access_control:auth(#mqtt_client{username = Username, peername = Peer}, Password) of
             ok ->
                 true;

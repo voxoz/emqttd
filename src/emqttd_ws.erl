@@ -37,14 +37,14 @@
 %%--------------------------------------------------------------------
 
 %% @doc Handle WebSocket Request.
-handle_request(Req) ->
+handle_request({R,_} = Req) ->
     {ok, ProtoEnv} = emqttd:env(protocol),
     PacketSize = get_value(max_packet_size, ProtoEnv, ?MAX_PACKET_SIZE),
     Parser = emqttd_parser:initial_state(PacketSize),
     %% Upgrade WebSocket.
     {ReentryWs, ReplyChannel} = mochiweb_websocket:upgrade_connection(Req, fun ?MODULE:ws_loop/3),
     {ok, ClientPid} = emqttd_ws_client_sup:start_client(self(), Req, ReplyChannel),
-    ReentryWs(#wsocket_state{peername = Req:get(peername), parser = Parser,
+    ReentryWs(#wsocket_state{peername = R:get(peername, Req), parser = Parser,
                              max_packet_size = PacketSize, client_pid = ClientPid}).
 
 %%--------------------------------------------------------------------
