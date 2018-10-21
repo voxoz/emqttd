@@ -1,6 +1,8 @@
 EMQ 2.1.2
 =========
 
+[![Build Status](https://travis-ci.org/synrc/emqttd.svg?branch=master)](https://travis-ci.org/synrc/emqttd)
+
 Features
 --------
 
