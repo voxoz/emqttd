@@ -96,53 +96,24 @@ start_servers(Sup) ->
                {"emqttd bridge supervisor", {supervisor, emqttd_bridge_sup_sup}},
                {"emqttd system monitor", {supervisor, emqttd_sysmon_sup}},
                {"emqttd access control", emqttd_access_control}],
-    [start_server(Sup, Server) || Server <- Servers],
-    io:format("Servers Done~n").
+    [start_server(Sup, Server) || Server <- Servers].
 
-start_server(_Sup, {Name, F}) when is_function(F) ->
-    ?PRINT("~s is starting...", [Name]),
-    F(),
-    ?PRINT_MSG("[ok]~n");
+start_server(_Sup, {_Name, F}) when is_function(F) -> F();
+start_server(Sup, {_Name, Server}) -> start_child(Sup, Server);
+start_server(Sup, {_Name, Server, Opts}) -> start_child(Sup, Server, Opts).
 
-start_server(Sup, {Name, Server}) ->
-    ?PRINT("~s is starting...", [Name]),
-    start_child(Sup, Server),
-    ?PRINT_MSG("[ok]~n");
+start_child(Sup, {supervisor, Module}) -> supervisor:start_child(Sup, supervisor_spec(Module));
+start_child(Sup, Module) when is_atom(Module) -> {ok, _ChiId} = supervisor:start_child(Sup, worker_spec(Module)).
+start_child(Sup, {supervisor, Module}, Opts) -> supervisor:start_child(Sup, supervisor_spec(Module, Opts));
+start_child(Sup, Module, Opts) when is_atom(Module) -> supervisor:start_child(Sup, worker_spec(Module, Opts)).
 
-start_server(Sup, {Name, Server, Opts}) ->
-    ?PRINT("~s is starting...", [ Name]),
-    start_child(Sup, Server, Opts),
-    ?PRINT_MSG("[ok]~n").
+supervisor_spec(Module) when is_atom(Module) -> supervisor_spec(Module, start_link, []).
+supervisor_spec(Module, Opts) -> supervisor_spec(Module, start_link, [Opts]).
+supervisor_spec(M, F, A) -> {M, {M, F, A}, permanent, infinity, supervisor, [M]}.
 
-start_child(Sup, {supervisor, Module}) ->
-    supervisor:start_child(Sup, supervisor_spec(Module));
-
-start_child(Sup, Module) when is_atom(Module) ->
-    {ok, _ChiId} = supervisor:start_child(Sup, worker_spec(Module)).
-
-start_child(Sup, {supervisor, Module}, Opts) ->
-    supervisor:start_child(Sup, supervisor_spec(Module, Opts));
-
-start_child(Sup, Module, Opts) when is_atom(Module) ->
-    supervisor:start_child(Sup, worker_spec(Module, Opts)).
-
-supervisor_spec(Module) when is_atom(Module) ->
-    supervisor_spec(Module, start_link, []).
-
-supervisor_spec(Module, Opts) ->
-    supervisor_spec(Module, start_link, [Opts]).
-
-supervisor_spec(M, F, A) ->
-    {M, {M, F, A}, permanent, infinity, supervisor, [M]}.
-
-worker_spec(Module) when is_atom(Module) ->
-    worker_spec(Module, start_link, []).
-
-worker_spec(Module, Opts) when is_atom(Module) ->
-    worker_spec(Module, start_link, [Opts]).
-
-worker_spec(M, F, A) ->
-    {M, {M, F, A}, permanent, 10000, worker, [M]}.
+worker_spec(Module) when is_atom(Module) -> worker_spec(Module, start_link, []).
+worker_spec(Module, Opts) when is_atom(Module) -> worker_spec(Module, start_link, [Opts]).
+worker_spec(M, F, A) -> {M, {M, F, A}, permanent, 10000, worker, [M]}.
 
 %%--------------------------------------------------------------------
 %% Register default ACL File

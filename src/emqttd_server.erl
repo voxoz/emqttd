@@ -289,27 +289,8 @@ demonitor_subpid(SubPid, State = #state{submon = PMon}) when is_pid(SubPid) ->
 demonitor_subpid(_SubPid, State) ->
     State.
 
-subscriber_down_(Subscriber) ->
+subscriber_down_(_Subscriber) ->
     ok.
-%    lists:foreach(fun({_, {Share, Topic}}) ->
-%                        subscriber_down_(Share, Subscriber, Topic);
-%                     ({_, Topic}) ->
-%                        subscriber_down_(undefined, Subscriber, Topic)
-%        end, ets:lookup(mqtt_subscription, Subscriber)),
-%    mnesia:dirty_delete(mqtt_subscription, Subscriber).
-%    ets:delete(mqtt_subscription, Subscriber).
-
-subscriber_down_(Share, Subscriber, Topic) ->
-    case ets:lookup(mqtt_subproperty, {Topic, Subscriber}) of
-        [] ->
-            %% TODO:....???
-            Options = if Share == undefined -> []; true -> [{share, Share}] end,
-            emqttd_pubsub:async_unsubscribe(Topic, Subscriber, Options);
-        [{mqtt_subproperty, _, Options}] ->
-            emqttd_pubsub:async_unsubscribe(Topic, Subscriber, Options),
-            kvs:delete(mqtt_subproperty, {Topic, Subscriber})
-%            ets:delete(mqtt_subproperty, {Topic, Subscriber})
-    end.
 
 setstats(State) ->
     emqttd_stats:setstats('subscriptions/count', 'subscriptions/max',

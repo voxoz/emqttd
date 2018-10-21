@@ -1,10 +1,9 @@
 -module(emqttd_kvs).
 -include_lib("kvs/include/metainfo.hrl").
 -include("emqttd.hrl").
--compile(export_all).
+-export([metainfo/0,tables/0]).
 
 metainfo() ->   #schema{name=kvs,tables= tables() }.
-
 tables()   -> [ #table{name=mqtt_subproperty,
                        fields=record_info(fields,mqtt_subproperty),
                        copy_type=disc_copies, type=set},

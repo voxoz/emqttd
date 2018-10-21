@@ -15,16 +15,12 @@
 %%--------------------------------------------------------------------
 
 -module(emqttd_pubsub).
-
 -behaviour(gen_server2).
-
 -author("Feng Lee <feng@emqtt.io>").
-
 -include("emqttd.hrl").
-
 -include("emqttd_internal.hrl").
 
--compile(export_all).
+%-compile(export_all).
 -export([start_link/3]).
 
 %% PubSub API.
