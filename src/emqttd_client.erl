@@ -135,7 +135,7 @@ send_fun({C,_} = Conn, Peername) ->
     Self = self(),
     fun(Packet) ->
         Data = emqttd_serializer:serialize(Packet),
-        ?LOG(debug, "SEND ~p", [Data], #client_state{peername = Peername}),
+        ?LOG(debug, "SEND2 ~p", [Data], #client_state{peername = Peername}),
         emqttd_metrics:inc('bytes/sent', iolist_size(Data)),
         try C:async_send(Data,Conn) of
             true -> ok

@@ -197,16 +197,11 @@ merge_sockopts(Options) ->
 stop_listeners() -> lists:foreach(fun stop_listener/1, emqttd:env(listeners, [])).
 
 %% @private
-stop_listener({tcp, ListenOn, _Opts}) ->
-    esockd:close('mqtt:tcp', ListenOn);
-stop_listener({ssl, ListenOn, _Opts}) ->
-    esockd:close('mqtt:ssl', ListenOn);
-stop_listener({Proto, ListenOn, _Opts}) when Proto == http; Proto == ws ->
-    mochiweb:stop_http('mqtt:ws', ListenOn);
-stop_listener({Proto, ListenOn, _Opts}) when Proto == https; Proto == wss ->
-    mochiweb:stop_http('mqtt:wss', ListenOn);
-stop_listener({Proto, ListenOn, _Opts}) ->
-    esockd:close(Proto, ListenOn).
+stop_listener({tcp, ListenOn, _Opts}) -> esockd:close('mqtt:tcp', ListenOn);
+stop_listener({ssl, ListenOn, _Opts}) -> esockd:close('mqtt:ssl', ListenOn);
+stop_listener({Proto, ListenOn, _Opts}) when Proto == http; Proto == ws -> mochiweb:stop_http('mqtt:ws', ListenOn);
+stop_listener({Proto, ListenOn, _Opts}) when Proto == https; Proto == wss -> mochiweb:stop_http('mqtt:wss', ListenOn);
+stop_listener({Proto, ListenOn, _Opts}) -> esockd:close(Proto, ListenOn).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
