@@ -20,7 +20,7 @@
 -include("emqttd.hrl").
 -include("emqttd_internal.hrl").
 
-%-compile(export_all).
+-compile(export_all).
 -export([start_link/3]).
 
 %% PubSub API.
