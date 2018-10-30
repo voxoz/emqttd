@@ -16,6 +16,7 @@
 
 %% @doc Session Helper.
 -module(emqttd_sm_helper).
+-compile({parse_transform, lager_transform}).
 
 -author("Feng Lee <feng@emqtt.io>").
 

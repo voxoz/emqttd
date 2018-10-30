@@ -24,6 +24,8 @@
 
 -include("emqttd.hrl").
 
+-define(SM, emqttd_sm).
+
 -define(HELPER, emqttd_sm_helper).
 
 %% API
@@ -45,8 +47,8 @@ init([]) ->
               permanent, 5000, worker, [?HELPER]},
 
     %% SM Pool Sup
-    MFA = {emqttd_sm, start_link, []},
-    PoolSup = emqttd_pool_sup:spec([emqttd_sm, hash, erlang:system_info(schedulers), MFA]),
+    MFA = {?SM, start_link, []},
+    PoolSup = emqttd_pool_sup:spec([?SM, hash, erlang:system_info(schedulers), MFA]),
 
     {ok, {{one_for_all, 10, 3600}, [Helper, PoolSup]}}.
 

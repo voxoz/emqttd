@@ -49,7 +49,7 @@ start(_Type, _Args) ->
             || {X,Y,Z} <- [{?MODULE,start_servers,[Sup]},
                            {emqttd_cli,load,[]},
                            {?MODULE,register_acl_mod,[]},
-                           {emqttd_plugins,init,[]},
+%                           {emqttd_plugins,init,[]},
 %                           {emqttd_plugins,load,[]},
 %                           {?MODULE,start_listeners,[]},
                            {register,[emqttd, self()]}] ],

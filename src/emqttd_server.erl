@@ -296,7 +296,7 @@ demonitor_subpid(SubPid, State = #state{submon = PMon}) when is_pid(SubPid) ->
 demonitor_subpid(_SubPid, State) ->
     State.
 
-subscriber_down_(Subscriber) ->
+subscriber_down_(_Subscriber) ->
     ok.
 %    lists:foreach(fun({_, {Share, Topic}}) ->
 %                        subscriber_down_(Share, Subscriber, Topic);

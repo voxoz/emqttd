@@ -30,7 +30,7 @@
 
 -define(ACL_RULE_TAB, mqtt_acl_rule).
 
--record(state, {config}).
+-record(state, {config, nomatch = allow}).
 
 %%--------------------------------------------------------------------
 %% API
@@ -86,11 +86,11 @@ filter(_PubSub, {_AllowDeny, _Who, _, _Topics}) ->
       State  :: #state{}).
 check_acl(_Who, #state{config = undefined}) ->
     allow;
-check_acl({Client, PubSub, Topic}, #state{}) ->
+check_acl({Client, PubSub, Topic}, #state{nomatch = Default}) ->
     case match(Client, Topic, lookup(PubSub)) of
         {matched, allow} -> allow;
         {matched, deny}  -> deny;
-        nomatch          -> ignore
+        nomatch          -> Default
     end.
 
 lookup(PubSub) ->

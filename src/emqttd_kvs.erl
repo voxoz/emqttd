@@ -1,11 +1,8 @@
 -module(emqttd_kvs).
 -include_lib("kvs/include/metainfo.hrl").
 -include("emqttd.hrl").
--compile(export_all).
+-export([mnesia/1,metainfo/0,tables/0]).
 
--export([mnesia/1]).
-
-%-boot_mnesia({mnesia, [boot]}).
 -copy_mnesia({mnesia, [copy]}).
 
 

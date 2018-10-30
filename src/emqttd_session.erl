@@ -44,6 +44,7 @@
 %%
 
 -module(emqttd_session).
+-compile({parse_transform, lager_transform}).
 
 -behaviour(gen_server2).
 
@@ -59,7 +60,6 @@
 
 -import(proplists, [get_value/2, get_value/3]).
 
--compile({parse_transform, lager_transform}).
 %% Session API
 -export([start_link/3, resume/3, destroy/2]).
 
@@ -383,7 +383,7 @@ handle_cast({subscribe, _From, TopicTable, AckFun},
             State = #state{client_id     = ClientId,
                            username      = Username,
                            subscriptions = Subscriptions}) ->
-    ?LOG(debug, "Subscribe ~p", [TopicTable], State),
+    ?LOG(info, "Subscribe ~p", [TopicTable], State),
     {GrantedQos, Subscriptions1} =
     lists:foldl(fun({Topic, Opts}, {QosAcc, SubMap}) ->
                 NewQos = proplists:get_value(qos, Opts),
@@ -412,7 +412,7 @@ handle_cast({unsubscribe, _From, TopicTable},
             State = #state{client_id     = ClientId,
                            username      = Username,
                            subscriptions = Subscriptions}) ->
-    ?LOG(debug, "Unsubscribe ~p", [TopicTable], State),
+    ?LOG(info, "Unsubscribe ~p", [TopicTable], State),
     Subscriptions1 =
     lists:foldl(fun({Topic, Opts}, SubMap) ->
                 case maps:find(Topic, SubMap) of
@@ -489,7 +489,7 @@ handle_cast({resume, ClientId, ClientPid},
                            await_rel_timer = AwaitTimer,
                            expiry_timer    = ExpireTimer}) ->
 
-    ?LOG(debug, "Resumed by ~p", [ClientPid], State),
+    ?LOG(info, "Resumed by ~p", [ClientPid], State),
 
     %% Cancel Timers
     lists:foreach(fun emqttd_misc:cancel_timer/1,
@@ -514,7 +514,7 @@ handle_cast({resume, ClientId, ClientPid},
     %% Clean Session: true -> false?
     if
         CleanSess =:= true ->
-            ?LOG(info, "CleanSess changed to false.", [], State1),
+            ?LOG(error, "CleanSess changed to false.", [], State1),
             emqttd_sm:register_session(ClientId, false, info(State1));
         CleanSess =:= false ->
             ok
