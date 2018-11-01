@@ -48,12 +48,14 @@ start(_Type, _Args) ->
             io:format("~p:~p: ~p~n",[X,Y,ok]) end
             || {X,Y,Z} <- [{?MODULE,start_servers,[Sup]},
                            {emqttd_cli,load,[]},
-                           {?MODULE,register_acl_mod,[]},
-%                           {emqttd_plugins,init,[]},
+                           {?MODULE,register_acl_mod,[]}
+%                          {emqttd_plugins,init,[]},
 %                           {emqttd_plugins,load,[]},
 %                           {?MODULE,start_listeners,[]},
-                           {register,[emqttd, self()]}] ],
+%                           {register,[emqttd, self()]}
+    ]],
     start_autocluster(),
+    register(emqttd, self()),
     print_vsn(),
     {ok, Sup}.
 

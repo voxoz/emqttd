@@ -17,12 +17,14 @@
 %% @doc EMQ Main Module.
 
 -module(emqttd).
+-compile([{parse_transform, lager_transform}]).
 
 -author("Feng Lee <feng@emqtt.io>").
 
 -include("emqttd.hrl").
 
 -include("emqttd_protocol.hrl").
+
 
 -export([start/0, env/1, env/2, is_running/1, stop/0]).
 
