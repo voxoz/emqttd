@@ -15,6 +15,7 @@
 %%--------------------------------------------------------------------
 
 -module(emqttd_access_control).
+-compile({parse_transform, lager_transform}).
 
 -behaviour(gen_server).
 
@@ -80,7 +81,7 @@ check_acl(Client, PubSub, Topic) when ?PS(PubSub) ->
     end.
 check_acl(#mqtt_client{client_id = ClientId}, PubSub, Topic, []) ->
     lager:error("ACL: nomatch for ~s ~s ~s", [ClientId, PubSub, Topic]),
-    allow;
+    emqttd:env(acl_nomatch, allow);
 check_acl(Client, PubSub, Topic, [{Mod, State, _Seq}|AclMods]) ->
     case Mod:check_acl({Client, PubSub, Topic}, State) of
         allow  -> allow;

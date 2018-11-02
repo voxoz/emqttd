@@ -224,12 +224,12 @@ del_subscriber(Topic, Subscriber, Options) ->
     end.
 
 del_subscriber_(Share, Topic, Subscriber) ->
-    kvs:delete(mqtt_subscriber, {Topic, shared(Share, Subscriber)}),
+    mnesia:dirty_delete_object({mqtt_subscriber, Topic, shared(Share, Subscriber)}),
 %    ets:delete_object(mqtt_subscriber, {Topic, shared(Share, Subscriber)}),
     (not ets:member(mqtt_subscriber, Topic)) andalso emqttd_router:del_route(Topic).
 
 del_local_subscriber_(Share, Topic, Subscriber) ->
-    kvs:delete(mqtt_subscriber, {{local, Topic}, shared(Share, Subscriber)}),
+    mnesia:dirty_delete_object({mqtt_subscriber, {local, Topic}, shared(Share, Subscriber)}),
 %    ets:delete_object(mqtt_subscriber, {{local, Topic}, shared(Share, Subscriber)}),
     (not ets:member(mqtt_subscriber, {local, Topic})) andalso emqttd_router:del_local_route(Topic).
 
