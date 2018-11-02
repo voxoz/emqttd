@@ -44,17 +44,17 @@ start(_Type, _Args) ->
     ekka:start(),
 %   emqttd_mnesia:start(),
     {ok, Sup} = emqttd_sup:start_link(),
+    start_autocluster(),
     [ begin _ = erlang:apply(X,Y,Z),
-            io:format("~p:~p: ~p~n",[X,Y,ok]) end
-            || {X,Y,Z} <- [{?MODULE,start_servers,[Sup]},
-                           {emqttd_cli,load,[]},
-                           {?MODULE,register_acl_mod,[]}
+    io:format("~p:~p: ~p~n",[X,Y,ok]) end
+        || {X,Y,Z} <- [{?MODULE,start_servers,[Sup]},
+        {emqttd_cli,load,[]},
+        {?MODULE,register_acl_mod,[]}
 %                          {emqttd_plugins,init,[]},
 %                           {emqttd_plugins,load,[]},
 %                           {?MODULE,start_listeners,[]},
 %                           {register,[emqttd, self()]}
     ]],
-    start_autocluster(),
     register(emqttd, self()),
     print_vsn(),
     {ok, Sup}.
