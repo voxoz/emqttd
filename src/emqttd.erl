@@ -182,7 +182,7 @@ shutdown(Reason) ->
     ak.
 
 reboot() ->
-    lists:foreach(fun application:start/1, [gproc, esockd, mochiweb, emqttd, n2o, bpe, roster, emq_dashboard]).
+    lists:foreach(fun application:ensure_started/1, [gproc, esockd, mochiweb, emqttd, n2o, bpe, roster, emq_dashboard]).
 
 %%--------------------------------------------------------------------
 %% Debug
