@@ -132,7 +132,7 @@ init([]) ->
 
 handle_call({register_mod, Type, Mod, Opts, Seq}, _From, State) ->
     Mods = lookup_mods(Type),
-    io:format("Mod registeration: ~p ~n", [Mods]),
+    io:format("Mod registration: ~p ~n", [Mods]),
     Existed = lists:keyfind(Mod, 1, Mods),
     {reply, if_existed(Existed, fun() ->
                 case catch Mod:init(Opts) of

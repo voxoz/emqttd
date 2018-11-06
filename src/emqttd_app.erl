@@ -84,6 +84,7 @@ start_servers(Sup) ->
                {"emqttd router", emqttd_router},
                {"emqttd pubsub", {supervisor, emqttd_pubsub_sup}},
                {"emqttd stats", emqttd_stats},
+               {"emqttd access control", emqttd_access_control},
                {"emqttd metrics", emqttd_metrics},
                {"emqttd pooler", {supervisor, emqttd_pooler}},
                {"emqttd trace", {supervisor, emqttd_trace_sup}},
@@ -95,8 +96,8 @@ start_servers(Sup) ->
                {"emqttd alarm", emqttd_alarm},
                {"emqttd mod supervisor", emqttd_mod_sup},
                {"emqttd bridge supervisor", {supervisor, emqttd_bridge_sup_sup}},
-               {"emqttd system monitor", {supervisor, emqttd_sysmon_sup}},
-               {"emqttd access control", emqttd_access_control}],
+               {"emqttd system monitor", {supervisor, emqttd_sysmon_sup}}
+               ],
     [start_server(Sup, Server) || Server <- Servers],
     io:format("Servers Done~n").
 
