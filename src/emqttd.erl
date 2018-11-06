@@ -178,12 +178,11 @@ shutdown() ->
 shutdown(Reason) ->
     lager:error("EMQ shutdown for ~s", [Reason]),
     emqttd_plugins:unload(),
-    %roster:stop_vnodes(), timer:sleep(1000),
-    lists:foreach(fun application:stop/1, [roster, bpe, n2o, emqttd, ekka, mochiweb, esockd, gproc]),
+    lists:foreach(fun application:stop/1, [roster, bpe, n2o, emq_dashboard, emqttd, ekka, mochiweb, esockd, gproc]),
     ak.
 
 reboot() ->
-    lists:foreach(fun application:start/1, [gproc, esockd, mochiweb, ekka, emqttd, n2o, bpe, roster]).
+    lists:foreach(fun application:start/1, [gproc, esockd, mochiweb, ekka, emqttd, emq_dashboard, n2o, bpe, roster]).
 
 %%--------------------------------------------------------------------
 %% Debug
