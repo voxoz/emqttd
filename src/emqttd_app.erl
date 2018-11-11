@@ -46,13 +46,11 @@ start(_Type, _Args) ->
     emqttd_sm:mnesia(boot),
     emqttd_router:mnesia(boot),
     {ok, Sup} = emqttd_sup:start_link(),
-    [ begin _ = erlang:apply(X,Y,Z),
-            io:format("~p:~p: ~p~n",[X,Y,ok]) end
+    [ begin _ = erlang:apply(X,Y,Z) end
             || {X,Y,Z} <- [{?MODULE,start_servers,[Sup]},
                            {emqttd_cli,load,[]},
                            {?MODULE,register_acl_mod,[]},
                            {emqttd_plugins,init,[]},
-%                           {emqttd_plugins,load,[]},
                            {?MODULE,start_listeners,[]},
                            {register,[emqttd, self()]}] ],
     print_vsn(),
